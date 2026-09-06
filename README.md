@@ -1,17 +1,37 @@
-# Screen Narrator (Zero-Latency Preloading)
+# 👁️ Whisper Screen
 
-An accessibility tool that silently monitors screen changes during meetings and preloads AI descriptions. It provides zero-latency narration the moment a meeting host pauses speaking.
+> **Zero-Latency Real-Time Accessibility Narration for Screen Sharing**
 
-## Features
-*   **Zero-Latency Preloading**: Pre-fetches descriptions while the host is talking.
-*   **Audio Silence Detection**: Uses Web Audio API to detect host pauses dynamically.
-*   **Visual Motion Tracking**: Uses the Canvas API to detect when presentation slides or screen views change.
-*   **Hugging Face API Integration**: Uses `Qwen/Qwen3.8-27B` (or other Vision models) for contextual narration.
+Whisper Screen bridges the accessibility gap for visually impaired participants during presentations, webinars, and live streams. By running parallel audio-visual pipelines directly in the browser, it silently pre-loads AI descriptions of visual changes while the speaker talks, delivering instantaneous, polite narration the moment they pause.
 
-## Setup
-1. Clone this repository.
-2. Open `script.js` and add your Hugging Face API key to the `HF_TOKEN` constant.
-3. Serve the directory using a local development server. (e.g., `python -m http.server 8000` or VS Code Live Server).
-4. Open the site in your browser and click "Share Screen & Audio".
+---
 
-*Note: Access to the screen-sharing API requires the site to be served over `localhost` or a secure `https://` connection.*
+## 🚀 The Core Problem
+
+During virtual presentations (Zoom, Google Meet, Microsoft Teams), speakers frequently say phrases like *"As you can see on this chart..."* without describing the visual context. Standard AI meeting tools only transcribe or summarize spoken words; they are blind to the screen itself.
+
+Whisper Screen solves this by acting as an intelligent visual co-pilot that watches the screen, waits for natural pauses in speech, and speaks aloud what has changed.
+
+---
+
+## ✨ Key Features
+
+* **Zero-Latency Preloading:** Instead of waiting for a pause to begin processing, the vision model analyzes visual changes in the background while the host is speaking, eliminating awkward multi-second lag.
+* **Dynamic Noise Gate:** Uses real-time RMS audio analysis via the Web Audio API to distinguish intentional human speech from background hums and breath sounds.
+* **Platform Agnostic:** Runs entirely client-side in any modern browser—compatible with Zoom, Google Meet, Microsoft Teams, and local app windows.
+* **Local-First Privacy:** Video frames are analyzed transiently via API; audio analysis and speech synthesis run 100% locally on the client device.
+
+---
+
+## 🛠️ Architecture & Tech Stack
+
+```text
+[ Screen Share / Audio ]
+       │
+       ├──► [ Web Audio API ] ──► Dynamic Noise Gate ──► Detects Pause
+       │
+       └──► [ HTML5 Canvas ] ──► Pixel Delta Check ──► HF Vision Model
+                                                              │
+                                                     [ Preloaded Cache ]
+                                                              │
+                                                     [ Web Speech API ]
