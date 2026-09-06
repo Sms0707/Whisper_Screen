@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Narrator — Zero-Latency Preloading (Hugging Face)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Link to external stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Screen Narrator</h1>
+      <p>Preloads AI descriptions silently while the host is talking for instant zero-latency narration when they pause.</p>
+    </header>
+
+    <div class="preview empty" id="previewWrap">
+      <video id="hiddenVideo" autoplay muted playsinline></video>
+      <div class="badges">
+        <div class="badge" id="speechBadge"><span class="dot"></span><span id="speechState">Idle</span></div>
+      </div>
+    </div>
+    
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
+    <canvas id="motionCanvas" width="64" height="64" style="display:none;"></canvas>
+
+    <div class="controls">
+      <button class="primary" id="startBtn">Share Screen & Audio</button>
+      <button class="ghost" id="testVoiceBtn">Test Voice 🔊</button>
+      <button class="ghost" id="stopBtn" disabled>Stop</button>
+
+      <div class="field">
+        <label for="threshSlider">Noise Gate</label>
+        <input type="range" id="threshSlider" min="10" max="60" step="2" value="24">
+        <span class="val" id="threshVal">24</span>
+      </div>
+
+      <div class="field">
+        <label for="pauseSlider">Trigger Pause</label>
+        <input type="range" id="pauseSlider" min="0.5" max="4.0" step="0.5" value="1.0">
+        <span class="val" id="pauseVal">1.0s</span>
+      </div>
+
+      <label class="field" style="cursor: pointer;">
+        <input type="checkbox" id="muteToggle"> Mute voice
+      </label>
+    </div>
+
+    <div class="status" id="status">Click "Share Screen & Audio" and ensure "Share audio" is checked.</div>
+
+    <section class="transcript">
+      <h2>Timeline & Transcripts</h2>
+      <div id="log"></div>
+    </section>
+  </main>
+
+  <!-- Link to external JavaScript file -->
+  <script src="script.js"></script>
+</body>
+</html>
