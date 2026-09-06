@@ -1,6 +1,6 @@
 // --- HUGGING FACE ROUTER CONFIGURATION ---
 // SECURITY NOTE: Never commit active API keys to GitHub. Set this up using environment variables or a configuration file in a production environment.
-const HF_TOKEN = "YOUR_HUGGINGFACE_TOKEN_HERE"; 
+const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
 const MODEL = "Qwen/Qwen3.8-27B"; 
 
