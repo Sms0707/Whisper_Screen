@@ -2,61 +2,91 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Narrator — Zero-Latency Preloading (Hugging Face)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Narrator — Zero-Latency Preloading</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <!-- Link to external stylesheet -->
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <header>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo-pill">AI Audio Pipeline</div>
       <h1>Screen Narrator</h1>
-      <p>Preloads AI descriptions silently while the host is talking for instant zero-latency narration when they pause.</p>
+      <p class="subtitle">Preloads AI descriptions silently while you speak for instant zero-latency narration upon pausing.</p>
     </header>
 
-    <div class="preview empty" id="previewWrap">
-      <video id="hiddenVideo" autoplay muted playsinline></video>
-      <div class="badges">
-        <div class="badge" id="speechBadge"><span class="dot"></span><span id="speechState">Idle</span></div>
+    <main class="main-content">
+      <section class="preview-card empty" id="previewWrap">
+        <div class="preview-placeholder">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          <span>Screen preview will appear here</span>
+        </div>
+        <video id="hiddenVideo" autoplay muted playsinline></video>
+        <div class="badges">
+          <div class="badge" id="speechBadge">
+            <span class="dot"></span>
+            <span id="speechState">Idle</span>
+          </div>
+        </div>
+      </section>
+      
+      <canvas id="hiddenCanvas" style="display:none;"></canvas>
+      <canvas id="motionCanvas" width="64" height="64" style="display:none;"></canvas>
+
+      <section class="control-panel">
+        <div class="action-buttons">
+          <button class="btn btn-primary" id="startBtn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            Share Screen & Audio
+          </button>
+          <button class="btn btn-ghost" id="testVoiceBtn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            Test Voice
+          </button>
+          <button class="btn btn-ghost danger" id="stopBtn" disabled>Stop</button>
+        </div>
+
+        <div class="settings-grid">
+          <div class="field-card">
+            <div class="field-header">
+              <label for="threshSlider">Noise Gate Threshold</label>
+              <span class="val" id="threshVal">24</span>
+            </div>
+            <input type="range" id="threshSlider" min="10" max="60" step="2" value="24">
+          </div>
+
+          <div class="field-card">
+            <div class="field-header">
+              <label for="pauseSlider">Trigger Pause Duration</label>
+              <span class="val" id="pauseVal">1.0s</span>
+            </div>
+            <input type="range" id="pauseSlider" min="0.5" max="4.0" step="0.5" value="1.0">
+          </div>
+        </div>
+
+        <div class="toggles-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="muteToggle">
+            <span>Mute voice output</span>
+          </label>
+        </div>
+      </section>
+
+      <div class="status-banner" id="status">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        <span>Click "Share Screen & Audio" and ensure "Share audio" is checked.</span>
       </div>
-    </div>
-    
-    <canvas id="hiddenCanvas" style="display:none;"></canvas>
-    <canvas id="motionCanvas" width="64" height="64" style="display:none;"></canvas>
 
-    <div class="controls">
-      <button class="primary" id="startBtn">Share Screen & Audio</button>
-      <button class="ghost" id="testVoiceBtn">Test Voice 🔊</button>
-      <button class="ghost" id="stopBtn" disabled>Stop</button>
+      <section class="transcript-section">
+        <h2>Timeline & Transcripts</h2>
+        <div class="transcript-container" id="log">
+          <div class="log-empty-state">Session activity will stream here...</div>
+        </div>
+      </section>
+    </main>
+  </div>
 
-      <div class="field">
-        <label for="threshSlider">Noise Gate</label>
-        <input type="range" id="threshSlider" min="10" max="60" step="2" value="24">
-        <span class="val" id="threshVal">24</span>
-      </div>
-
-      <div class="field">
-        <label for="pauseSlider">Trigger Pause</label>
-        <input type="range" id="pauseSlider" min="0.5" max="4.0" step="0.5" value="1.0">
-        <span class="val" id="pauseVal">1.0s</span>
-      </div>
-
-      <label class="field" style="cursor: pointer;">
-        <input type="checkbox" id="muteToggle"> Mute voice
-      </label>
-    </div>
-
-    <div class="status" id="status">Click "Share Screen & Audio" and ensure "Share audio" is checked.</div>
-
-    <section class="transcript">
-      <h2>Timeline & Transcripts</h2>
-      <div id="log"></div>
-    </section>
-  </main>
-
-  <!-- Link to external JavaScript file -->
   <script src="script.js"></script>
 </body>
 </html>
