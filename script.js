@@ -44,6 +44,13 @@ let previousPixels = null;
 let lastScreenChangedTime = 0;
 let hasPendingScreenChange = false;
 
+// Audio detection frame counters (smoothing to prevent rapid toggle noise)
+let speechFrameCount = 0;
+let silenceFrameCount = 0;
+
+// Global reference prevents Chromium Garbage Collection from killing active speech mid-sentence
+let currentUtterance = null;
+
 if ('speechSynthesis' in window) {
   window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
 }
@@ -52,7 +59,8 @@ pauseSlider.addEventListener("input", () => { pauseVal.textContent = pauseSlider
 threshSlider.addEventListener("input", () => { threshVal.textContent = threshSlider.value; });
 
 startBtn.addEventListener("click", async () => {
-  window.speechSynthesis.cancel();
+  stopCapture(); // Reset existing state prior to initialization
+  
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 10 }, audio: true });
   } catch (err) {
@@ -70,6 +78,8 @@ startBtn.addEventListener("click", async () => {
   }
 
   startVisualMotionWatcher();
+  
+  // Listen for media stream ending (e.g. host stops screen share or closes Meet)
   stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
   
   if (previewWrap) previewWrap.classList.remove("empty");
@@ -77,27 +87,15 @@ startBtn.addEventListener("click", async () => {
   stopBtn.disabled = false;
 
   speakText("Whisper activated.");
-  setStatus("Monitoring host voice and screen scrolls...");
+  setStatus("Monitoring host voice and screen changes...");
 });
 
 stopBtn.addEventListener("click", stopCapture);
 
 if (closeBtn) {
   closeBtn.addEventListener("click", () => {
-    if (!stopBtn.disabled) stopCapture();
-    speakText("Whisper deactivated.");
-    setTimeout(() => { window.close(); }, 800);
-  });
-}
-
-if (silenceBtn) {
-  silenceBtn.addEventListener("click", () => {
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      isNarratingVoice = false;
-      setStatus("Narration silenced by user.");
-      document.querySelectorAll(".entry.speaking").forEach(e => e.classList.remove("speaking"));
-    }
+    stopCapture();
+    ipcRenderer.send('close-overlay');
   });
 }
 
@@ -111,7 +109,7 @@ function setupAudioAnalysis(mediaStream) {
 
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
-  analyser.smoothingTimeConstant = 0.4;
+  analyser.smoothingTimeConstant = 0.5;
 
   source.connect(highpass); highpass.connect(lowpass); lowpass.connect(analyser);
 
@@ -119,14 +117,27 @@ function setupAudioAnalysis(mediaStream) {
   const dataArray = new Uint8Array(bufferLength);
 
   function checkAudio() {
+    if (!analyser) return;
     analyser.getByteFrequencyData(dataArray);
     let sum = 0;
     for (let i = 0; i < bufferLength; i++) { sum += dataArray[i] * dataArray[i]; }
     const rms = Math.sqrt(sum / bufferLength);
     const dynamicThreshold = Number(threshSlider.value);
 
-    if (rms > dynamicThreshold) { handleSpeechDetected(); } 
-    else { handleSilenceDetected(); }
+    // Smooth microphone readings to eliminate speech audio breaking
+    if (rms > dynamicThreshold) {
+      speechFrameCount++;
+      silenceFrameCount = 0;
+      if (speechFrameCount >= 3) {
+        handleSpeechDetected();
+      }
+    } else {
+      silenceFrameCount++;
+      speechFrameCount = 0;
+      if (silenceFrameCount >= 5) {
+        handleSilenceDetected();
+      }
+    }
 
     animFrameId = requestAnimationFrame(checkAudio);
   }
@@ -139,10 +150,11 @@ function handleSpeechDetected() {
     speechBadge.className = "badge speaking";
     speechState.textContent = "Host Speaking";
     
-    if (window.speechSynthesis.speaking) {
+    // Instantly cancel AI speech if host resumes talking
+    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
       isNarratingVoice = false;
-      setStatus("Host speaking. Cleared AI queue.");
+      setStatus("Host speaking. Cleared speech queue.");
     }
   }
   if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
@@ -156,13 +168,15 @@ function handleSilenceDetected() {
       speechBadge.className = "badge silent";
       speechState.textContent = "Host Paused";
       
+      // Speak preloaded description immediately when host pauses
       if (preloadedNarration) {
-        setStatus("Speaking pre-loaded description instantly.");
+        setStatus("Host paused. Narrating preloaded description...");
         const entry = logEntry(preloadedNarration);
         if (!muteToggle.checked) { speakText(preloadedNarration, entry); }
         preloadedNarration = "";
-      } else {
-        triggerNarration("Host paused");
+      } else if (hasPendingScreenChange) {
+        hasPendingScreenChange = false;
+        triggerNarration("Host paused after screen change");
       }
     }, pauseDelay);
   }
@@ -170,7 +184,7 @@ function handleSilenceDetected() {
 
 function startVisualMotionWatcher() {
   visualCheckInterval = setInterval(() => {
-    if (isRequesting || isPreloading || (isNarratingVoice && !window.speechSynthesis.paused) || !video.videoWidth) return;
+    if (isRequesting || isPreloading || !video.videoWidth || !stream) return;
 
     mCtx.drawImage(video, 0, 0, 64, 64);
     const imgData = mCtx.getImageData(0, 0, 64, 64).data;
@@ -189,15 +203,20 @@ function startVisualMotionWatcher() {
       lastScreenChangedTime = Date.now();
       hasPendingScreenChange = true;
       speechBadge.className = "badge motion";
-      speechState.textContent = "Screen Scrolling / Changed";
+      speechState.textContent = "Screen Changed";
       previousPixels.set(imgData);
     } else if (hasPendingScreenChange) {
       if (Date.now() - lastScreenChangedTime > 1200) {
-        hasPendingScreenChange = false;
-        speechBadge.className = "badge silent";
-        speechState.textContent = "Screen Settled";
-        if (isHostSpeaking) { preloadScreenDescription(); } 
-        else { triggerNarration("Screen scrolled silently"); }
+        speechBadge.className = isHostSpeaking ? "badge speaking" : "badge silent";
+        speechState.textContent = isHostSpeaking ? "Host Speaking" : "Screen Settled";
+        
+        if (isHostSpeaking) {
+          // Preload description in background while host speaks
+          preloadScreenDescription();
+        } else {
+          hasPendingScreenChange = false;
+          triggerNarration("Screen changed while host silent");
+        }
       }
     }
   }, 400);
@@ -215,7 +234,7 @@ async function preloadScreenDescription() {
     if (description && description.length > 5) {
       preloadedNarration = description;
       lastAnalyzedImageHash = frameData.fingerprint;
-      setStatus("Description pre-loaded. Waiting for host to pause.");
+      setStatus("Description preloaded. Waiting for host pause.");
     }
   } catch (err) {
     setStatus("Ready.");
@@ -223,12 +242,12 @@ async function preloadScreenDescription() {
 }
 
 async function triggerNarration(triggerReason) {
-  if (isRequesting || isNarratingVoice) return;
+  if (isRequesting || isHostSpeaking) return;
   const frameData = getFrame();
   if (!frameData || frameData.fingerprint === lastAnalyzedImageHash) return;
 
   isRequesting = true;
-  setStatus(`Describing new content (${triggerReason})...`);
+  setStatus(`Describing content (${triggerReason})...`);
   try {
     const description = await describeScreen(frameData.base64);
     if (description && description.length > 5) {
@@ -262,7 +281,7 @@ async function describeScreen(base64Image) {
       messages: [{ 
         role: "user", 
         content: [
-          { type: "text", text: "Describe ONLY the presentation, shared slides, or main document content. Completely ignore any floating UI windows, 'WhisperScreen' overlays, or control bars on top of the screen. Provide only the relevant context in 1 to 2 concise sentences." }, 
+          { type: "text", text: "Describe ONLY the presentation, shared slides, or main document content. Completely ignore any floating UI windows, overlays, or control bars on top of the screen. Provide only relevant context in 1 to 2 concise sentences." }, 
           { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
         ] 
       }],
@@ -275,50 +294,75 @@ async function describeScreen(base64Image) {
   const data = await response.json();
   const aiText = data?.choices?.[0]?.message?.content;
   
-  if (!aiText) throw new Error("AI returned an empty response.");
+  if (!aiText) throw new Error("AI returned empty response.");
   return aiText.trim();
 }
 
 function speakText(text, entryEl) {
   if (!("speechSynthesis" in window) || (muteToggle && muteToggle.checked)) return;
 
+  // Never attempt TTS playback if host is currently speaking
+  if (isHostSpeaking) return;
+
   window.speechSynthesis.cancel();
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.15; 
-  utterance.pitch = 1.0;
+  currentUtterance = new SpeechSynthesisUtterance(text);
+  currentUtterance.rate = 1.1; 
+  currentUtterance.pitch = 1.0;
   
   const voices = window.speechSynthesis.getVoices();
   const englishVoice = voices.find(v => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Samantha"))) || voices.find(v => v.lang.startsWith("en"));
-  if (englishVoice) utterance.voice = englishVoice;
+  if (englishVoice) currentUtterance.voice = englishVoice;
 
-  utterance.onstart = () => { 
+  currentUtterance.onstart = () => { 
     isNarratingVoice = true; 
     if (entryEl) entryEl.classList.add("speaking"); 
     setStatus("Narrating aloud..."); 
   };
   
-  utterance.onend = () => { 
+  currentUtterance.onend = () => { 
     isNarratingVoice = false; 
     if (entryEl) entryEl.classList.remove("speaking"); 
     setStatus("Finished speaking. Listening for changes..."); 
+    currentUtterance = null;
   };
   
-  utterance.onerror = () => { 
+  currentUtterance.onerror = () => { 
     isNarratingVoice = false; 
     if (entryEl) entryEl.classList.remove("speaking"); 
+    currentUtterance = null;
   };
 
-  setTimeout(() => { window.speechSynthesis.speak(utterance); }, 150);
+  window.speechSynthesis.speak(currentUtterance);
 }
 
 function stopCapture() {
   if (silenceTimer) clearTimeout(silenceTimer);
   if (animFrameId) cancelAnimationFrame(animFrameId);
   if (visualCheckInterval) clearInterval(visualCheckInterval);
-  if (audioCtx) audioCtx.close();
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  window.speechSynthesis.cancel();
+  
+  if (audioCtx) {
+    try { audioCtx.close(); } catch (e) {}
+    audioCtx = null;
+  }
+  
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+
+  isNarratingVoice = false;
+  isHostSpeaking = false;
+  isRequesting = false;
+  isPreloading = false;
+  preloadedNarration = "";
+  hasPendingScreenChange = false;
+  currentUtterance = null;
+
   speechBadge.className = "badge"; 
   speechState.textContent = "Idle";
   if (previewWrap) previewWrap.classList.add("empty");
@@ -344,6 +388,19 @@ function logEntry(text) {
   return div;
 }
 
+// IPC Listeners
+ipcRenderer.on('force-stop-capture', () => {
+  stopCapture();
+});
+
+ipcRenderer.on('trigger-silence', () => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  isNarratingVoice = false;
+  setStatus("Silenced.");
+});
+
 ipcRenderer.on('trigger-replay', () => {
   const lastReplayBtn = document.querySelector('.entry .replay');
   if (lastReplayBtn) {
@@ -351,4 +408,8 @@ ipcRenderer.on('trigger-replay', () => {
   } else {
     speakText("No recent context to replay.");
   }
+});
+
+window.addEventListener('beforeunload', () => {
+  stopCapture();
 });
