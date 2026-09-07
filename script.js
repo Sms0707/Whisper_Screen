@@ -1,10 +1,7 @@
-const { ipcRenderer } = require('electron');
-
-// Replace your top 3 lines with this:
-const HF_TOKEN = "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"; // Ensure your real token is here
+const { ipcRenderer } = require('electron'); // FIX: Prevents the UI crash!
+const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
-const MODEL = "Qwen/Qwen2.5-VL-72B-Instruct"; // VERIFIED Vision Model
-// DOM Elements
+const MODEL = "Qwen/Qwen2-VL-7B-Instruct"; // FIX: 7B model won't time out the free API
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const testVoiceBtn = document.getElementById("testVoiceBtn");
@@ -408,6 +405,7 @@ ipcRenderer.on('activate-whisper', () => {
   speakText("Whisper activated.");
 });
 
+
 ipcRenderer.on('deactivate-whisper', () => {
   setStatus("Deactivating...");
   stopCapture(true); // Stop audio/video streams, but preserve TTS engine for exit cue
@@ -415,6 +413,15 @@ ipcRenderer.on('deactivate-whisper', () => {
   setTimeout(() => {
     ipcRenderer.send('hide-window-now');
   }, 1200);
+});
+ // NEW: Listens for Ctrl+Shift+R to replay the last spoken description
+ipcRenderer.on('trigger-replay', () => {
+  const lastReplayBtn = document.querySelector('.entry .replay');
+  if (lastReplayBtn) {
+    lastReplayBtn.click();
+  } else {
+    speakText("No recent context to replay.");
+  }
 });
 
 ipcRenderer.on('trigger-silence', silenceAudioNow);
