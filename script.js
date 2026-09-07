@@ -282,7 +282,7 @@ async function describeScreen(base64Image) {
     method: "POST",
     headers: { 
       "Content-Type": "application/json", 
-      "Authorization": `Bearer ${HF_TOKEN}` 
+      "Authorization": `Bearer ${NVIDIA_API_KEY}` // Updated variable here
     },
     body: JSON.stringify({
       model: MODEL,
@@ -303,16 +303,14 @@ async function describeScreen(base64Image) {
   }
   
   const data = await response.json();
-  
   const aiText = data?.choices?.[0]?.message?.content;
   
   if (!aiText) {
-    throw new Error("AI returned an empty response. Check model permissions.");
+    throw new Error("AI returned an empty response.");
   }
 
   return aiText.trim();
 }
-
 function speakText(text, entryEl) {
   if (!("speechSynthesis" in window) || (muteToggle && muteToggle.checked)) return;
 
