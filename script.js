@@ -401,3 +401,9 @@ ipcRenderer.on('whisper-status', (event, status) => {
     speakText("Whisper deactivated.");
   }
 });
+ipcRenderer.on('force-stop-capture', () => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel(); // Kills lingering voice synthesis
+  }
+  stopCapture(); // Closes screen share stream and resets state
+});
