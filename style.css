@@ -150,3 +150,47 @@ button {
 .entry.speaking .desc { color: var(--accent-primary); }
 .entry .replay { background: rgba(255,255,255,0.05); border: none; color: var(--text-main); cursor: pointer; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 .entry .replay svg { width: 12px; height: 12px; }
+/* --- NEW OVERLAY OVERRIDES --- */
+body {
+  background-color: transparent !important; /* Strips away the solid background */
+  overflow: hidden;
+}
+
+.overlay-panel {
+  background: rgba(15, 23, 42, 0.75); /* Dark, translucent glass effect */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100vh - 48px);
+}
+
+.top-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  /* CRITICAL: Allows you to click and drag the frameless window! */
+  -webkit-app-region: drag; 
+}
+
+/* Ensure buttons inside the drag region can still be clicked */
+.top-toolbar button, 
+.top-toolbar input, 
+.top-toolbar label {
+  -webkit-app-region: no-drag;
+}
+
+.log-container {
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.entry {
+  background: rgba(0, 0, 0, 0.4); /* Translucent message boxes */
+}
