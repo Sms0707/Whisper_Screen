@@ -1,5 +1,5 @@
 // --- NVIDIA NIM VISION CONFIGURATION ---
-const NVIDIA_API_KEY = "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"; // Replace with your actual NVIDIA key
+const NVIDIA_API_KEY = "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"; 
 const API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"; 
 const MODEL = "meta/llama-3.2-11b-vision-instruct"; 
 
@@ -338,7 +338,7 @@ async function describeScreen(base64Image) {
               {
                 type: "text",
                 text: "Describe ONLY the presentation, shared slides, or main document content. Completely ignore any floating UI windows or overlays. Explain clearly and completely in 2 concise sentences what content or section is shown."
-              }
+              }, // <--- FIXED: Added missing comma here!
               {
                 type: "image_url",
                 image_url: {
@@ -391,7 +391,7 @@ function speakText(text, entryEl) {
   };
 
   currentUtterance.onend = () => {
-    setTimeout(() => { isNarratingVoice = false; }, 400); // Grace period prevents mic pickup echo
+    setTimeout(() => { isNarratingVoice = false; }, 400); 
     if (entryEl) entryEl.classList.remove("speaking");
     setStatus("Finished speaking. Listening for changes...");
     currentUtterance = null;
