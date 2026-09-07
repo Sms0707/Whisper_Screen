@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, session, globalShortcut } = require('electron');
+const { app, BrowserWindow, desktopCapturer, session, globalShortcut, ipcMain } = require('electron');
 
 let whisperWindow;
 let meetingDetectedOnce = false;
@@ -21,12 +21,13 @@ app.whenReady().then(() => {
     }
   });
 
-  // Prevents the overlay from being seen by screen capture/sharing
   whisperWindow.setContentProtection(true);
   whisperWindow.loadFile('index.html');
 
+  // Global Shortcuts
   globalShortcut.register('CommandOrControl+Shift+W', () => {
     if (whisperWindow.isVisible()) {
+      whisperWindow.webContents.send('force-stop-capture');
       whisperWindow.hide();
       userDismissedCurrentMeeting = true;
     } else {
@@ -37,7 +38,7 @@ app.whenReady().then(() => {
 
   globalShortcut.register('CommandOrControl+Shift+Q', () => {
     if (whisperWindow) {
-      whisperWindow.webContents.executeJavaScript('document.getElementById("silenceBtn").click();');
+      whisperWindow.webContents.send('trigger-silence');
     }
   });
 
@@ -45,6 +46,15 @@ app.whenReady().then(() => {
     if (whisperWindow) {
       whisperWindow.webContents.send('trigger-replay');
     }
+  });
+
+  // Handle explicit close button click from renderer UI
+  ipcMain.on('close-overlay', () => {
+    if (whisperWindow) {
+      whisperWindow.webContents.send('force-stop-capture');
+      whisperWindow.hide();
+    }
+    userDismissedCurrentMeeting = true;
   });
 
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
@@ -56,6 +66,7 @@ app.whenReady().then(() => {
     }
   });
 
+  // Background Meeting Scanner Loop
   setInterval(async () => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['window'] });
@@ -75,9 +86,13 @@ app.whenReady().then(() => {
       } else if (meetingDetectedOnce) {
         missingMeetingCount++;
         
+        // Meeting closed: forcibly kill speech audio and stop screen recording loops
         if (missingMeetingCount > 5) {
-          if (whisperWindow && whisperWindow.isVisible()) {
-            whisperWindow.hide();
+          if (whisperWindow) {
+            whisperWindow.webContents.send('force-stop-capture');
+            if (whisperWindow.isVisible()) {
+              whisperWindow.hide();
+            }
           }
           meetingDetectedOnce = false;
           userDismissedCurrentMeeting = false; 
