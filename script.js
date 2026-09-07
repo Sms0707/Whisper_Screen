@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron'); // Bridge to communicate with main.js
 
-const HF_TOKEN = "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"; 
+const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
 const MODEL = "Qwen/Qwen3.8-27B"; 
 
