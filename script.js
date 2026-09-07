@@ -1,5 +1,5 @@
-// --- HUGGING FACE ROUTER CONFIGURATION ---
-// SECURITY NOTE: Never commit active API keys to GitHub. Set this up using environment variables or a configuration file in a production environment.
+// --- CONFIGURATION ---
+// SECURITY ALERT: Rotate this HF token after your hackathon demo to prevent abuse.
 const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
 const MODEL = "Qwen/Qwen3.8-27B"; 
@@ -34,18 +34,27 @@ let isNarratingVoice = false;
 let silenceTimer = null;
 let isRequesting = false;
 
-// Pre-loading variables
+// Context memory for delta-descriptions
 let preloadedNarration = "";
 let isPreloading = false;
 let lastAnalyzedImageHash = "";
+let lastSpokenDescription = ""; 
 
 // Visual delta tracking
 let previousPixels = null;
 let lastScreenChangedTime = 0;
 let hasPendingScreenChange = false;
 
+// Ensure voices load asynchronously on desktop browsers
+let availableVoices = [];
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    availableVoices = window.speechSynthesis.getVoices();
+  };
+}
+
 testVoiceBtn.addEventListener("click", () => {
-  speakText("Audio voice engine is active and ready.");
+  speakText("Audio voice engine is active and tuned for real-time whispering.");
   setStatus("Voice synthesis engine tested successfully.");
 });
 
@@ -55,6 +64,17 @@ pauseSlider.addEventListener("input", () => {
 
 threshSlider.addEventListener("input", () => {
   threshVal.textContent = threshSlider.value;
+});
+
+// --- HOTKEY FEATURE: Press Shift + Space for Instant Push-to-Describe ---
+document.addEventListener("keydown", (e) => {
+  if (e.shiftKey && e.code === "Space") {
+    e.preventDefault();
+    if (stream && !isRequesting) {
+      setStatus("Manual shortcut triggered!");
+      triggerNarration("User requested describe");
+    }
+  }
 });
 
 startBtn.addEventListener("click", async () => {
@@ -86,7 +106,7 @@ startBtn.addEventListener("click", async () => {
   previewWrap.classList.remove("empty");
   startBtn.disabled = true;
   stopBtn.disabled = false;
-  setStatus("Monitoring host voice and screen scrolls...");
+  setStatus("Monitoring screen (Press Shift+Space anytime to describe)...");
 });
 
 stopBtn.addEventListener("click", stopCapture);
@@ -174,7 +194,7 @@ function handleSilenceDetected() {
             speakText(preloadedNarration, entry);
           }
           preloadedNarration = "";
-        } else {
+        } else if (hasPendingScreenChange) {
           triggerNarration("Host finished speaking");
         }
       }
@@ -211,7 +231,7 @@ function startVisualMotionWatcher() {
       speechState.textContent = "Screen Scrolling / Changed";
       previousPixels.set(imgData);
     } else if (hasPendingScreenChange) {
-      if (Date.now() - lastScreenChangedTime > 1200) {
+      if (Date.now() - lastScreenChangedTime > 1000) {
         hasPendingScreenChange = false;
         speechBadge.className = "badge silent";
         speechState.textContent = "Screen Settled";
@@ -226,28 +246,24 @@ function startVisualMotionWatcher() {
   }, 400);
 }
 
-// Background worker that stores text without speaking
 async function preloadScreenDescription() {
   if (isPreloading) return;
 
   const frameData = getFrame();
-  if (!frameData) return;
-
-  if (frameData.fingerprint === lastAnalyzedImageHash) return;
+  if (!frameData || frameData.fingerprint === lastAnalyzedImageHash) return;
 
   isPreloading = true;
-  setStatus("Background pre-loading screen description...");
+  setStatus("Pre-loading description in background...");
 
   try {
     const description = await describeScreen(frameData.base64);
-    if (description && description.length > 5) {
+    if (description && description.length > 3) {
       preloadedNarration = description;
       lastAnalyzedImageHash = frameData.fingerprint;
-      setStatus("Description pre-loaded. Waiting for host to pause.");
+      setStatus("Description pre-loaded. Waiting for audio pause.");
     }
   } catch (err) {
     console.warn("Preload error:", err);
-    setStatus("Ready.");
   } finally {
     isPreloading = false;
   }
@@ -258,20 +274,19 @@ async function triggerNarration(triggerReason) {
   if (isRequesting || isNarratingVoice) return;
 
   const frameData = getFrame();
-  if (!frameData) return;
-
-  if (frameData.fingerprint === lastAnalyzedImageHash) {
+  if (!frameData || frameData.fingerprint === lastAnalyzedImageHash) {
     setStatus("Screen unchanged since last narration.");
     return;
   }
 
   isRequesting = true;
-  setStatus(`Describing new content (${triggerReason})...`);
+  setStatus(`Analyzing screen change (${triggerReason})...`);
 
   try {
     const description = await describeScreen(frameData.base64);
-    if (description && description.length > 5) {
+    if (description && description.length > 3) {
       lastAnalyzedImageHash = frameData.fingerprint;
+      lastSpokenDescription = description;
       const entry = logEntry(description);
       if (!muteToggle.checked) {
         speakText(description, entry);
@@ -299,47 +314,45 @@ function getFrame() {
   sampleCanvas.getContext("2d").drawImage(canvas, 0, 0, 16, 16);
   const fingerprint = sampleCanvas.toDataURL();
 
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.6); // Slightly lower quality for speed
   return { 
     base64: dataUrl.split(",")[1],
     fingerprint: fingerprint
   };
 }
 
-// Rewired specifically for Hugging Face's OpenAI-compatible endpoint
+// Optimized Vision AI call with context-awareness and low latency
 async function describeScreen(base64Image) {
-  const response = await fetch(
-    API_URL,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${HF_TOKEN}`
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Explain clearly and completely in 2 to 3 full sentences what new content, app view, list, or section is currently shown. Do not leave any sentence unfinished."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 2048,
-        temperature: 0.2
-      })
-    }
-  );
+  const previousContext = lastSpokenDescription 
+    ? `The previous slide was: "${lastSpokenDescription}". ` 
+    : "";
+
+  const promptText = `${previousContext}In ONE direct, concise sentence (under 15 words), describe what NEW content, drawing, chart, title, or UI element is shown. Speak directly to a visually impaired listener without preamble.`;
+
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${HF_TOKEN}`
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: promptText },
+            {
+              type: "image_url",
+              image_url: { url: `data:image/jpeg;base64,${base64Image}` }
+            }
+          ]
+        }
+      ],
+      max_tokens: 75, // Lowered from 2048 to drastically cut API response latency
+      temperature: 0.1
+    })
+  });
 
   if (!response.ok) {
     const errText = await response.text();
@@ -350,33 +363,43 @@ async function describeScreen(base64Image) {
   return data.choices[0].message.content.trim();
 }
 
-// ---- 4. TEXT-TO-SPEECH ENGINE ----
+// ---- 4. ENHANCED TEXT-TO-SPEECH ENGINE ----
 function speakText(text, entryEl) {
   if (!("speechSynthesis" in window)) return;
 
   window.speechSynthesis.cancel();
-  if (window.speechSynthesis.paused) {
-    window.speechSynthesis.resume();
-  }
 
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.25; 
-  utterance.pitch = 1.0;
+  utterance.rate = 1.05;  // Slightly calmer pace for clarity
+  utterance.pitch = 0.95; // Slightly lower pitch for a whisper-like feel
 
-  const voices = window.speechSynthesis.getVoices();
-  const englishVoice = voices.find(v => v.lang.startsWith("en-US") || v.lang.startsWith("en-GB") || v.lang.startsWith("en"));
-  if (englishVoice) utterance.voice = englishVoice;
+  if (availableVoices.length === 0) {
+    availableVoices = window.speechSynthesis.getVoices();
+  }
+
+  // Priority heuristic for natural-sounding English voices
+  const preferredVoice = availableVoices.find(v => 
+    v.lang.startsWith("en") && (
+      v.name.includes("Natural") || 
+      v.name.includes("Google") || 
+      v.name.includes("Samantha") || 
+      v.name.includes("Daniel") || 
+      v.name.includes("Karen")
+    )
+  ) || availableVoices.find(v => v.lang.startsWith("en"));
+
+  if (preferredVoice) utterance.voice = preferredVoice;
 
   utterance.onstart = () => {
     isNarratingVoice = true;
     if (entryEl) entryEl.classList.add("speaking");
-    setStatus("Narrating aloud...");
+    setStatus("Whispering description...");
   };
 
   utterance.onend = () => {
     isNarratingVoice = false;
     if (entryEl) entryEl.classList.remove("speaking");
-    setStatus("Finished speaking. Listening for changes...");
+    setStatus("Listening for screen changes...");
   };
 
   utterance.onerror = (e) => {
@@ -385,9 +408,7 @@ function speakText(text, entryEl) {
     if (entryEl) entryEl.classList.remove("speaking");
   };
 
-  setTimeout(() => {
-    window.speechSynthesis.speak(utterance);
-  }, 100);
+  window.speechSynthesis.speak(utterance);
 }
 
 function stopCapture() {
