@@ -1,7 +1,7 @@
-const { ipcRenderer } = require('electron'); // FIX: Prevents the UI crash!
-const HF_TOKEN = "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"; 
+const { ipcRenderer } = require('electron');
+const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
-const MODEL = "Qwen/Qwen2-VL-7B-Instruct"; // FIX: 7B model won't time out the free API
+const MODEL = "Qwen/Qwen2-VL-7B-Instruct";
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const testVoiceBtn = document.getElementById("testVoiceBtn");
@@ -298,7 +298,6 @@ async function describeScreen(base64Image) {
   
   const data = await response.json();
   
-  // FIX: Safely verify the AI generated a response before trimming
   const aiText = data?.choices?.[0]?.message?.content;
   
   if (!aiText) {
@@ -306,11 +305,6 @@ async function describeScreen(base64Image) {
   }
 
   return aiText.trim();
-}
-  
-  if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-  const data = await response.json();
-  return data.choices[0].message.content.trim();
 }
 
 function speakText(text, entryEl) {
@@ -405,16 +399,15 @@ ipcRenderer.on('activate-whisper', () => {
   speakText("Whisper activated.");
 });
 
-
 ipcRenderer.on('deactivate-whisper', () => {
   setStatus("Deactivating...");
-  stopCapture(true); // Stop audio/video streams, but preserve TTS engine for exit cue
+  stopCapture(true);
   speakText("Whisper deactivated.");
   setTimeout(() => {
     ipcRenderer.send('hide-window-now');
   }, 1200);
 });
- // NEW: Listens for Ctrl+Shift+R to replay the last spoken description
+
 ipcRenderer.on('trigger-replay', () => {
   const lastReplayBtn = document.querySelector('.entry .replay');
   if (lastReplayBtn) {
