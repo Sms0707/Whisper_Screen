@@ -1,6 +1,6 @@
-const { ipcRenderer } = require('electron'); // Bridge to communicate with main.js
+const { ipcRenderer } = require('electron');
 
-const HF_TOKEN = "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"; 
+const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
 const MODEL = "Qwen/Qwen3.8-27B"; 
 
@@ -26,7 +26,7 @@ const threshSlider = document.getElementById("threshSlider");
 const threshVal = document.getElementById("threshVal");
 const muteToggle = document.getElementById("muteToggle");
 
-// Engine State Variables
+// Engine State
 let stream = null;
 let audioCtx = null;
 let analyser = null;
@@ -46,16 +46,12 @@ let previousPixels = null;
 let lastScreenChangedTime = 0;
 let hasPendingScreenChange = false;
 
-// Pre-load Web Speech voices for Chromium browsers
+// Preload Web Speech voices
 if ('speechSynthesis' in window) {
   window.speechSynthesis.onvoiceschanged = () => {
     window.speechSynthesis.getVoices();
   };
 }
-
-/* =========================================
-   EVENT LISTENERS & CONTROLS
-========================================= */
 
 if (testVoiceBtn) {
   testVoiceBtn.addEventListener("click", () => {
@@ -73,7 +69,7 @@ if (threshSlider) {
 }
 
 startBtn.addEventListener("click", async () => {
-  window.speechSynthesis.cancel();
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 10 }, audio: true });
   } catch (err) {
@@ -91,49 +87,37 @@ startBtn.addEventListener("click", async () => {
   }
 
   startVisualMotionWatcher();
-  stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
+  stream.getVideoTracks()[0].addEventListener("ended", () => stopCapture());
   
   if (previewWrap) previewWrap.classList.remove("empty");
   startBtn.disabled = true;
   stopBtn.disabled = false;
 
-  // Announce startup aloud immediately upon activation
   speakText("Whisper activated.");
   setStatus("Monitoring host voice and screen scrolls...");
 });
 
-stopBtn.addEventListener("click", stopCapture);
+stopBtn.addEventListener("click", () => stopCapture());
 
-// Explicit Window Close Button
 if (closeBtn) {
   closeBtn.addEventListener("click", () => {
-    if (!stopBtn.disabled) {
-      stopCapture();
-    }
-    speakText("Whisper deactivated.");
-    setTimeout(() => {
-      ipcRenderer.send('close-overlay');
-    }, 800);
+    ipcRenderer.send('close-overlay');
   });
 }
 
-// Instant Silence Button Guard
 if (silenceBtn) {
-  silenceBtn.addEventListener("click", () => {
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      isNarratingVoice = false;
-      setStatus("Narration silenced by user.");
-      
-      const activeEntries = document.querySelectorAll(".entry.speaking");
-      activeEntries.forEach(entry => entry.classList.remove("speaking"));
-    }
-  });
+  silenceBtn.addEventListener("click", silenceAudioNow);
 }
 
-/* =========================================
-   AUDIO & VISION ENGINE LOGIC
-========================================= */
+function silenceAudioNow() {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  isNarratingVoice = false;
+  setStatus("Silenced by user.");
+  const activeEntries = document.querySelectorAll(".entry.speaking");
+  activeEntries.forEach(entry => entry.classList.remove("speaking"));
+}
 
 function setupAudioAnalysis(mediaStream) {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -226,7 +210,7 @@ function startVisualMotionWatcher() {
       lastScreenChangedTime = Date.now();
       hasPendingScreenChange = true;
       speechBadge.className = "badge motion";
-      speechState.textContent = "Screen Scrolling / Changed";
+      speechState.textContent = "Screen Scrolling";
       previousPixels.set(imgData);
     } else if (hasPendingScreenChange) {
       if (Date.now() - lastScreenChangedTime > 1200) {
@@ -246,16 +230,15 @@ async function preloadScreenDescription() {
   if (!frameData || frameData.fingerprint === lastAnalyzedImageHash) return;
 
   isPreloading = true;
-  setStatus("Background pre-loading screen description...");
+  setStatus("Background pre-loading description...");
   try {
     const description = await describeScreen(frameData.base64);
     if (description && description.length > 5) {
       preloadedNarration = description;
       lastAnalyzedImageHash = frameData.fingerprint;
-      setStatus("Description pre-loaded. Waiting for host to pause.");
+      setStatus("Description pre-loaded. Waiting for pause.");
     }
   } catch (err) {
-    console.warn("Preload error:", err);
     setStatus("Ready.");
   } finally { isPreloading = false; }
 }
@@ -266,7 +249,7 @@ async function triggerNarration(triggerReason) {
   if (!frameData || frameData.fingerprint === lastAnalyzedImageHash) return;
 
   isRequesting = true;
-  setStatus(`Describing new content (${triggerReason})...`);
+  setStatus(`Describing content (${triggerReason})...`);
   try {
     const description = await describeScreen(frameData.base64);
     if (description && description.length > 5) {
@@ -346,16 +329,32 @@ function speakText(text, entryEl) {
 
   setTimeout(() => {
     window.speechSynthesis.speak(utterance);
-  }, 100);
+  }, 50);
 }
 
-function stopCapture() {
+function stopCapture(preserveSpeech = false) {
   if (silenceTimer) clearTimeout(silenceTimer);
   if (animFrameId) cancelAnimationFrame(animFrameId);
   if (visualCheckInterval) clearInterval(visualCheckInterval);
-  if (audioCtx) audioCtx.close();
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  window.speechSynthesis.cancel();
+  
+  if (audioCtx) {
+    audioCtx.close().catch(() => {});
+    audioCtx = null;
+  }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  
+  if (!preserveSpeech && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+
+  isHostSpeaking = false;
+  isNarratingVoice = false;
+  isRequesting = false;
+  isPreloading = false;
+
   speechBadge.className = "badge"; 
   speechState.textContent = "Idle";
   if (previewWrap) previewWrap.classList.add("empty");
@@ -382,28 +381,25 @@ function logEntry(text) {
 }
 
 /* =========================================
-   IPC LISTENERS (Background Communication)
+   IPC HANDLERS FOR CONTROL & SHORTCUTS
 ========================================= */
 
-ipcRenderer.on('trigger-silence', () => {
-  if (silenceBtn) {
-    silenceBtn.click();
-  } else {
-    window.speechSynthesis.cancel();
-    isNarratingVoice = false;
-  }
+ipcRenderer.on('activate-whisper', () => {
+  setStatus("Whisper Activated.");
+  speakText("Whisper activated.");
 });
 
-ipcRenderer.on('whisper-status', (event, status) => {
-  if (status === 'activated') {
-    speakText("Whisper activated.");
-  } else if (status === 'deactivated') {
-    speakText("Whisper deactivated.");
-  }
+ipcRenderer.on('deactivate-whisper', () => {
+  setStatus("Deactivating...");
+  stopCapture(true); // Stop audio/video streams, but preserve TTS engine for exit cue
+  speakText("Whisper deactivated.");
+  setTimeout(() => {
+    ipcRenderer.send('hide-window-now');
+  }, 1200);
 });
+
+ipcRenderer.on('trigger-silence', silenceAudioNow);
+
 ipcRenderer.on('force-stop-capture', () => {
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel(); // Kills lingering voice synthesis
-  }
-  stopCapture(); // Closes screen share stream and resets state
+  stopCapture(false);
 });
