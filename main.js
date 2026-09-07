@@ -1,14 +1,15 @@
 const { app, BrowserWindow, desktopCapturer, session } = require('electron');
-const activeWin = require('active-win');
 
 let whisperWindow;
+let meetDetectedOnce = false;
+let missingMeetCount = 0;
 
 app.whenReady().then(() => {
   whisperWindow = new BrowserWindow({
     width: 400,
     height: 750,
     alwaysOnTop: true,
-    show: false, // Stays hidden until Google Meet is active
+    show: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -17,32 +18,33 @@ app.whenReady().then(() => {
 
   whisperWindow.loadFile('index.html');
 
-  // Handles screen sharing permissions smoothly in Electron
-  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    try {
-      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
-      callback({ video: sources[0], audio: 'loopback' });
-    } catch (error) {
-      console.error("Screen capture error:", error);
-    }
-  });
+  // Enable the native share picker so you can choose the exact Meet tab/window
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    // Left empty because useSystemPicker handles the interactive dialog box
+  }, { useSystemPicker: true });
 
-  // Background Gateway: Pops up automatically when you are in a Google Meet tab
+  // Robust background checker that doesn't break when Whisper Screen is focused
   setInterval(async () => {
     try {
-      const currentWin = await activeWin();
-      if (currentWin && currentWin.title) {
-        // Detects if "Meet" is in your active window title
-        const isMeetActive = currentWin.title.toLowerCase().includes('meet');
+      const sources = await desktopCapturer.getSources({ types: ['window'] });
+      const isMeetOpen = sources.some(s => s.name && s.name.toLowerCase().includes('meet'));
 
-        if (isMeetActive) {
-          if (whisperWindow && !whisperWindow.isVisible()) {
-            whisperWindow.show(); // Automatically pops up over your meeting
-          }
+      if (isMeetOpen) {
+        meetDetectedOnce = true;
+        missingMeetCount = 0; // Reset counter while Meet is open
+        if (whisperWindow && !whisperWindow.isVisible()) {
+          whisperWindow.show(); // Automatically pops up over Google Meet
+        }
+      } else if (meetDetectedOnce) {
+        missingMeetCount++;
+        // Only shut down if Google Meet has been closed for more than 10 seconds
+        if (missingMeetCount > 5) {
+          console.log("Google Meet closed. Shutting down Whisper Screen.");
+          app.quit();
         }
       }
     } catch (err) {
-      // Ignore background scanning hiccups
+      // Ignore background scan errors
     }
   }, 2000);
 });
