@@ -1,8 +1,8 @@
-const { app, BrowserWindow, session } = require('electron');
-const activeWin = require('active-win');
+const { app, BrowserWindow, desktopCapturer, session } = require('electron');
 
 let whisperWindow;
 let meetWasOpened = false;
+let checkCounter = 0; // Gives you time to open Meet before auto-closing
 
 app.whenReady().then(() => {
   whisperWindow = new BrowserWindow({
@@ -18,23 +18,41 @@ app.whenReady().then(() => {
 
   whisperWindow.loadFile('index.html');
 
-  // Enable the native browser/system picker so you can choose what to share
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    // Left empty because useSystemPicker handles the interactive dialog box
-  }, { useSystemPicker: true });
+  // FIX 1: Properly handles screen sharing requests inside Electron
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      // Automatically selects the primary window/screen feed
+      callback({ video: sources[0], audio: 'loopback' });
+    } catch (error) {
+      console.error("Screen capture error:", error);
+    }
+  });
 
-  // Background Gateway & Auto-Close Loop
+  // Automatically approve media permissions
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'display-capture') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  // FIX 2: Background Gateway & Smart Auto-Close Loop
   setInterval(async () => {
     try {
-      const currentWindow = await activeWin();
-      if (currentWindow && currentWindow.title && currentWindow.title.includes('Google Meet')) {
-        meetWasOpened = true;
+      checkCounter++;
+      const sources = await desktopCapturer.getSources({ types: ['window'] });
+      const isMeetOpen = sources.some(source => source.name && source.name.includes('Google Meet'));
+
+      if (isMeetOpen) {
+        meetWasOpened = true; // Mark that Meet has successfully opened
         if (whisperWindow && !whisperWindow.isVisible()) {
-          whisperWindow.show(); // Automatically pops up when Meet opens
+          whisperWindow.show(); // Automatically pops up over Google Meet!
         }
       } else {
-        // If Google Meet was open previously, but is now closed:
-        if (meetWasOpened) {
+        // Only start checking for closure AFTER the first 5 checks (prevents instant shutdown)
+        if (checkCounter > 5 && meetWasOpened) {
           console.log("Google Meet closed. Shutting down Whisper Screen.");
           app.quit(); // Automatically closes the app completely
         }
