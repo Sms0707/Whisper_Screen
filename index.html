@@ -1,58 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Whisper Screen | Zero-Latency AI Narration</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Whisper Screen | Spatial AI Narration</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Ambient background glow effects -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
   <main class="overlay-panel">
-    <!-- Top Toolbar (Draggable) -->
-    <div class="top-toolbar">
-      <button class="btn-primary" id="startBtn">Start AI</button>
-      <button class="btn-ghost" id="stopBtn" disabled>Stop</button>
-      
+    <!-- Top Drag Handle & Window Controls -->
+    <header class="window-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12h3l3-9 6 18 3-9h3"/></svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">WhisperScreen</span>
+          <span class="brand-tag">Spatial AI Engine</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="badge" id="speechBadge">
+          <span class="dot"></span>
+          <span id="speechState">Idle</span>
+        </div>
+        <button class="btn-icon" id="closeBtn" title="Close Whisper Screen">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></button>
+        </button>
+      </div>
+    </header>
+
+    <!-- Control Bar -->
+    <section class="control-bar">
+      <div class="primary-actions">
+        <button class="btn-primary" id="startBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>Start AI</span>
+        </button>
+        <button class="btn-danger" id="stopBtn" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          <span>Stop</span>
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
       <div class="settings-group">
         <div class="field">
-          <label>Noise Gate</label>
+          <div class="field-header">
+            <label for="threshSlider">Noise Gate</label>
+            <span class="val" id="threshVal">24</span>
+          </div>
           <input type="range" id="threshSlider" min="10" max="60" step="2" value="24">
         </div>
+
         <div class="field">
-          <label>Trigger Pause</label>
+          <div class="field-header">
+            <label for="pauseSlider">Pause Trigger</label>
+            <span class="val" id="pauseVal">1.0s</span>
+          </div>
           <input type="range" id="pauseSlider" min="0.5" max="4.0" step="0.5" value="1.0">
         </div>
       </div>
-      
-      <label class="toggle-field" style="cursor: pointer;">
-        <input type="checkbox" id="muteToggle"> Mute Voice
+
+      <div class="divider"></div>
+
+      <label class="toggle-field" title="Mute AI whispers">
+        <input type="checkbox" id="muteToggle">
+        <span class="custom-toggle"></span>
+        <span class="toggle-label">Mute</span>
       </label>
-      
-      <div class="badges">
-      <!-- The classic 'X' Close Button (Pinned to Top Right) -->
-      <button class="btn-ghost" id="closeBtn" title="Close Whisper Screen" style="position: absolute; right: 20px; top: 20px; padding: 6px; border-color: transparent; color: #94A3B8; -webkit-app-region: no-drag; z-index: 100;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-      </button>
-        <div class="badge" id="speechBadge"><span class="dot"></span><span id="speechState">Idle</span></div>
-      </div>
+    </section>
+
+    <!-- Status Banner -->
+    <div class="status-banner">
+      <div class="pulse-ring"></div>
+      <div class="status" id="status">Waiting for screen source...</div>
     </div>
 
-    <!-- Status & Transcriptions -->
-    <div class="status" id="status">Waiting for Google Meet...</div>
-    <div id="log" class="log-container"></div>
-    
-    <!-- Hidden Elements required for the engine to run -->
+    <!-- Live Whisper Log -->
+    <section class="transcript-section">
+      <div class="section-title">
+        <span>Live Context Feed</span>
+        <div class="audio-waves" id="audioWaves">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+      <div id="log" class="log-container"></div>
+    </section>
+
+    <!-- Hidden Pipeline Elements Required by Script -->
     <div style="display: none;">
       <button id="testVoiceBtn">Hidden Test</button>
-      <span id="threshVal"></span><span id="pauseVal"></span>
       <div id="previewWrap"><video id="hiddenVideo" autoplay muted playsinline></video></div>
       <canvas id="hiddenCanvas"></canvas>
       <canvas id="motionCanvas" width="64" height="64"></canvas>
     </div>
   </main>
+
   <script src="script.js"></script>
 </body>
 </html>
