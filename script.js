@@ -277,13 +277,16 @@ function getFrame() {
 async function describeScreen(base64Image) {
   const response = await fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${HF_TOKEN}` },
+    headers: { 
+      "Content-Type": "application/json", 
+      "Authorization": `Bearer ${HF_TOKEN}` 
+    },
     body: JSON.stringify({
       model: MODEL,
       messages: [{ 
         role: "user", 
         content: [
-          { type: "text", text: "Briefly describe the necessary information currently shown on this screen in a short, crisp way. Skip redundant UI elements, menus, or obvious background details. Provide only the relevant context in 1 to 2 concise sentences." }, 
+          { type: "text", text: "Briefly describe the necessary information currently shown on this screen in a short, crisp way. Skip redundant UI elements or menus. Provide only the relevant context in 1 to 2 concise sentences." }, 
           { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
         ] 
       }],
@@ -291,6 +294,22 @@ async function describeScreen(base64Image) {
       temperature: 0.2
     })
   });
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+  }
+  
+  const data = await response.json();
+  
+  // FIX: Safely verify the AI generated a response before trimming
+  const aiText = data?.choices?.[0]?.message?.content;
+  
+  if (!aiText) {
+    throw new Error("AI returned an empty response. Check model permissions.");
+  }
+
+  return aiText.trim();
+}
   
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
   const data = await response.json();
