@@ -1,14 +1,15 @@
-const { app, BrowserWindow, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 const activeWin = require('active-win');
 
 let whisperWindow;
+let meetWasOpened = false;
 
 app.whenReady().then(() => {
   whisperWindow = new BrowserWindow({
     width: 400,
     height: 750,
     alwaysOnTop: true,
-    show: false, // Stays hidden in the background until Google Meet opens
+    show: false, // Stays hidden until Google Meet is detected
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -17,27 +18,29 @@ app.whenReady().then(() => {
 
   whisperWindow.loadFile('index.html');
 
-  // FIX: This tells Electron how to handle screen sharing requests automatically
+  // Enable the native browser/system picker so you can choose what to share
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
-      // Automatically select the primary screen/window for capture
-      callback({ video: sources[0], audio: 'loopback' });
-    }).catch((error) => {
-      console.error("Screen capture error:", error);
-    });
-  });
+    // Left empty because useSystemPicker handles the interactive dialog box
+  }, { useSystemPicker: true });
 
-  // Background Gateway Detection Loop
+  // Background Gateway & Auto-Close Loop
   setInterval(async () => {
     try {
       const currentWindow = await activeWin();
       if (currentWindow && currentWindow.title && currentWindow.title.includes('Google Meet')) {
+        meetWasOpened = true;
         if (whisperWindow && !whisperWindow.isVisible()) {
-          whisperWindow.show(); // Automatically pops up over Google Meet!
+          whisperWindow.show(); // Automatically pops up when Meet opens
+        }
+      } else {
+        // If Google Meet was open previously, but is now closed:
+        if (meetWasOpened) {
+          console.log("Google Meet closed. Shutting down Whisper Screen.");
+          app.quit(); // Automatically closes the app completely
         }
       }
     } catch (err) {
-      // Ignored if window check fails temporarily
+      // Ignore temporary scanning errors
     }
-  }, 2000);
+  }, 3000);
 });
