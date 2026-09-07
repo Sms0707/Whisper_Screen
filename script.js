@@ -1,8 +1,8 @@
-// --- CONFIGURATION ---
-// SECURITY ALERT: Rotate this HF token after your hackathon demo to prevent abuse.
-const HF_TOKEN = "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"; 
-const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
-const MODEL = "Qwen/Qwen3.8-27B"; 
+// --- HUGGING FACE ROUTER CONFIGURATION ---
+// SECURITY NOTE: Never commit active API keys to GitHub. Set this up using environment variables or a configuration file in a production environment.
+const HF_TOKEN = "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"; 
+const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
+const MODEL = "Qwen/Qwen3.8-27B"; 
 
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
@@ -34,424 +34,403 @@ let isNarratingVoice = false;
 let silenceTimer = null;
 let isRequesting = false;
 
-// Context memory for delta-descriptions
+// Pre-loading variables
 let preloadedNarration = "";
 let isPreloading = false;
 let lastAnalyzedImageHash = "";
-let lastSpokenDescription = ""; 
 
 // Visual delta tracking
 let previousPixels = null;
 let lastScreenChangedTime = 0;
 let hasPendingScreenChange = false;
 
-// Ensure voices load asynchronously on desktop browsers
-let availableVoices = [];
-if ("speechSynthesis" in window) {
-  window.speechSynthesis.onvoiceschanged = () => {
-    availableVoices = window.speechSynthesis.getVoices();
-  };
-}
-
 testVoiceBtn.addEventListener("click", () => {
-  speakText("Audio voice engine is active and tuned for real-time whispering.");
-  setStatus("Voice synthesis engine tested successfully.");
+  speakText("Audio voice engine is active and ready.");
+  setStatus("Voice synthesis engine tested successfully.");
 });
 
 pauseSlider.addEventListener("input", () => {
-  pauseVal.textContent = pauseSlider.value + "s";
+  pauseVal.textContent = pauseSlider.value + "s";
 });
 
 threshSlider.addEventListener("input", () => {
-  threshVal.textContent = threshSlider.value;
-});
-
-// --- HOTKEY FEATURE: Press Shift + Space for Instant Push-to-Describe ---
-document.addEventListener("keydown", (e) => {
-  if (e.shiftKey && e.code === "Space") {
-    e.preventDefault();
-    if (stream && !isRequesting) {
-      setStatus("Manual shortcut triggered!");
-      triggerNarration("User requested describe");
-    }
-  }
+  threshVal.textContent = threshSlider.value;
 });
 
 startBtn.addEventListener("click", async () => {
-  window.speechSynthesis.cancel();
+  window.speechSynthesis.cancel();
 
-  try {
-    stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: 10 },
-      audio: true
-    });
-  } catch (err) {
-    setStatus("Permission denied or sharing cancelled: " + err.message, true);
-    return;
-  }
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 10 },
+      audio: true
+    });
+  } catch (err) {
+    setStatus("Permission denied or sharing cancelled: " + err.message, true);
+    return;
+  }
 
-  video.srcObject = stream;
-  await video.play();
+  video.srcObject = stream;
+  await video.play();
 
-  const audioTracks = stream.getAudioTracks();
-  if (audioTracks.length > 0) {
-    setupAudioAnalysis(stream);
-  } else {
-    setStatus("Running in Visual-Only mode (No audio track shared).", true);
-  }
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length > 0) {
+    setupAudioAnalysis(stream);
+  } else {
+    setStatus("Running in Visual-Only mode (No audio track shared).", true);
+  }
 
-  startVisualMotionWatcher();
+  startVisualMotionWatcher();
 
-  stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
-  previewWrap.classList.remove("empty");
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
-  setStatus("Monitoring screen (Press Shift+Space anytime to describe)...");
+  stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
+  previewWrap.classList.remove("empty");
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  setStatus("Monitoring host voice and screen scrolls...");
 });
 
 stopBtn.addEventListener("click", stopCapture);
 
 // ---- 1. AUDIO ANALYSIS (VOICE, SILENCE & INTERRUPTION) ----
 function setupAudioAnalysis(mediaStream) {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const source = audioCtx.createMediaStreamSource(mediaStream);
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(mediaStream);
 
-  const highpass = audioCtx.createBiquadFilter();
-  highpass.type = "highpass";
-  highpass.frequency.value = 250;
+  const highpass = audioCtx.createBiquadFilter();
+  highpass.type = "highpass";
+  highpass.frequency.value = 250;
 
-  const lowpass = audioCtx.createBiquadFilter();
-  lowpass.type = "lowpass";
-  lowpass.frequency.value = 3500;
+  const lowpass = audioCtx.createBiquadFilter();
+  lowpass.type = "lowpass";
+  lowpass.frequency.value = 3500;
 
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 512;
-  analyser.smoothingTimeConstant = 0.4;
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.4;
 
-  source.connect(highpass);
-  highpass.connect(lowpass);
-  lowpass.connect(analyser);
+  source.connect(highpass);
+  highpass.connect(lowpass);
+  lowpass.connect(analyser);
 
-  const bufferLength = analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufferLength);
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
 
-  function checkAudio() {
-    analyser.getByteFrequencyData(dataArray);
+  function checkAudio() {
+    analyser.getByteFrequencyData(dataArray);
 
-    let sum = 0;
-    for (let i = 0; i < bufferLength; i++) {
-      sum += dataArray[i] * dataArray[i];
-    }
-    const rms = Math.sqrt(sum / bufferLength);
-    const dynamicThreshold = Number(threshSlider.value);
+    let sum = 0;
+    for (let i = 0; i < bufferLength; i++) {
+      sum += dataArray[i] * dataArray[i];
+    }
+    const rms = Math.sqrt(sum / bufferLength);
+    const dynamicThreshold = Number(threshSlider.value);
 
-    if (rms > dynamicThreshold) {
-      handleSpeechDetected();
-    } else {
-      handleSilenceDetected();
-    }
+    if (rms > dynamicThreshold) {
+      handleSpeechDetected();
+    } else {
+      handleSilenceDetected();
+    }
 
-    animFrameId = requestAnimationFrame(checkAudio);
-  }
+    animFrameId = requestAnimationFrame(checkAudio);
+  }
 
-  checkAudio();
+  checkAudio();
 }
 
 function handleSpeechDetected() {
-  if (!isHostSpeaking) {
-    isHostSpeaking = true;
-    speechBadge.className = "badge speaking";
-    speechState.textContent = "Host Speaking";
+  if (!isHostSpeaking) {
+    isHostSpeaking = true;
+    speechBadge.className = "badge speaking";
+    speechState.textContent = "Host Speaking";
 
-    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-      window.speechSynthesis.pause();
-      setStatus("Host interrupted. Pausing AI...");
-    }
-  }
+    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+      window.speechSynthesis.pause();
+      setStatus("Host interrupted. Pausing AI...");
+    }
+  }
 
-  if (silenceTimer) {
-    clearTimeout(silenceTimer);
-    silenceTimer = null;
-  }
+  if (silenceTimer) {
+    clearTimeout(silenceTimer);
+    silenceTimer = null;
+  }
 }
 
 function handleSilenceDetected() {
-  if (isHostSpeaking && !silenceTimer) {
-    const pauseDelay = Number(pauseSlider.value) * 1000;
-    silenceTimer = setTimeout(() => {
-      isHostSpeaking = false;
-      speechBadge.className = "badge silent";
-      speechState.textContent = "Host Paused";
-      
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-        setStatus("Host paused. Resuming AI narration...");
-      } else {
-        if (preloadedNarration) {
-          setStatus("Speaking pre-loaded description instantly.");
-          const entry = logEntry(preloadedNarration);
-          if (!muteToggle.checked) {
-            speakText(preloadedNarration, entry);
-          }
-          preloadedNarration = "";
-        } else if (hasPendingScreenChange) {
-          triggerNarration("Host finished speaking");
-        }
-      }
-    }, pauseDelay);
-  }
+  if (isHostSpeaking && !silenceTimer) {
+    const pauseDelay = Number(pauseSlider.value) * 1000;
+    silenceTimer = setTimeout(() => {
+      isHostSpeaking = false;
+      speechBadge.className = "badge silent";
+      speechState.textContent = "Host Paused";
+      
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        setStatus("Host paused. Resuming AI narration...");
+      } else {
+        if (preloadedNarration) {
+          setStatus("Speaking pre-loaded description instantly.");
+          const entry = logEntry(preloadedNarration);
+          if (!muteToggle.checked) {
+            speakText(preloadedNarration, entry);
+          }
+          preloadedNarration = "";
+        } else {
+          triggerNarration("Host finished speaking");
+        }
+      }
+    }, pauseDelay);
+  }
 }
 
 // ---- 2. VISUAL MOTION DETECTION & PRELOADING ----
 function startVisualMotionWatcher() {
-  visualCheckInterval = setInterval(() => {
-    if (isRequesting || isPreloading || (isNarratingVoice && !window.speechSynthesis.paused) || !video.videoWidth) return;
+  visualCheckInterval = setInterval(() => {
+    if (isRequesting || isPreloading || (isNarratingVoice && !window.speechSynthesis.paused) || !video.videoWidth) return;
 
-    mCtx.drawImage(video, 0, 0, 64, 64);
-    const imgData = mCtx.getImageData(0, 0, 64, 64).data;
+    mCtx.drawImage(video, 0, 0, 64, 64);
+    const imgData = mCtx.getImageData(0, 0, 64, 64).data;
 
-    if (!previousPixels) {
-      previousPixels = new Uint8ClampedArray(imgData);
-      return;
-    }
+    if (!previousPixels) {
+      previousPixels = new Uint8ClampedArray(imgData);
+      return;
+    }
 
-    let diff = 0;
-    for (let i = 0; i < imgData.length; i += 4) {
-      diff += Math.abs(imgData[i] - previousPixels[i]);
-      diff += Math.abs(imgData[i + 1] - previousPixels[i + 1]);
-      diff += Math.abs(imgData[i + 2] - previousPixels[i + 2]);
-    }
+    let diff = 0;
+    for (let i = 0; i < imgData.length; i += 4) {
+      diff += Math.abs(imgData[i] - previousPixels[i]);
+      diff += Math.abs(imgData[i + 1] - previousPixels[i + 1]);
+      diff += Math.abs(imgData[i + 2] - previousPixels[i + 2]);
+    }
 
-    const avgDiff = diff / (64 * 64 * 3);
+    const avgDiff = diff / (64 * 64 * 3);
 
-    if (avgDiff > 7.0) {
-      lastScreenChangedTime = Date.now();
-      hasPendingScreenChange = true;
-      speechBadge.className = "badge motion";
-      speechState.textContent = "Screen Scrolling / Changed";
-      previousPixels.set(imgData);
-    } else if (hasPendingScreenChange) {
-      if (Date.now() - lastScreenChangedTime > 1000) {
-        hasPendingScreenChange = false;
-        speechBadge.className = "badge silent";
-        speechState.textContent = "Screen Settled";
+    if (avgDiff > 7.0) {
+      lastScreenChangedTime = Date.now();
+      hasPendingScreenChange = true;
+      speechBadge.className = "badge motion";
+      speechState.textContent = "Screen Scrolling / Changed";
+      previousPixels.set(imgData);
+    } else if (hasPendingScreenChange) {
+      if (Date.now() - lastScreenChangedTime > 1200) {
+        hasPendingScreenChange = false;
+        speechBadge.className = "badge silent";
+        speechState.textContent = "Screen Settled";
 
-        if (isHostSpeaking) {
-          preloadScreenDescription();
-        } else {
-          triggerNarration("Screen scrolled silently");
-        }
-      }
-    }
-  }, 400);
+        if (isHostSpeaking) {
+          preloadScreenDescription();
+        } else {
+          triggerNarration("Screen scrolled silently");
+        }
+      }
+    }
+  }, 400);
 }
 
+// Background worker that stores text without speaking
 async function preloadScreenDescription() {
-  if (isPreloading) return;
+  if (isPreloading) return;
 
-  const frameData = getFrame();
-  if (!frameData || frameData.fingerprint === lastAnalyzedImageHash) return;
+  const frameData = getFrame();
+  if (!frameData) return;
 
-  isPreloading = true;
-  setStatus("Pre-loading description in background...");
+  if (frameData.fingerprint === lastAnalyzedImageHash) return;
 
-  try {
-    const description = await describeScreen(frameData.base64);
-    if (description && description.length > 3) {
-      preloadedNarration = description;
-      lastAnalyzedImageHash = frameData.fingerprint;
-      setStatus("Description pre-loaded. Waiting for audio pause.");
-    }
-  } catch (err) {
-    console.warn("Preload error:", err);
-  } finally {
-    isPreloading = false;
-  }
+  isPreloading = true;
+  setStatus("Background pre-loading screen description...");
+
+  try {
+    const description = await describeScreen(frameData.base64);
+    if (description && description.length > 5) {
+      preloadedNarration = description;
+      lastAnalyzedImageHash = frameData.fingerprint;
+      setStatus("Description pre-loaded. Waiting for host to pause.");
+    }
+  } catch (err) {
+    console.warn("Preload error:", err);
+    setStatus("Ready.");
+  } finally {
+    isPreloading = false;
+  }
 }
 
 // ---- 3. HUGGING FACE ROUTER NARRATION HANDLER ----
 async function triggerNarration(triggerReason) {
-  if (isRequesting || isNarratingVoice) return;
+  if (isRequesting || isNarratingVoice) return;
 
-  const frameData = getFrame();
-  if (!frameData || frameData.fingerprint === lastAnalyzedImageHash) {
-    setStatus("Screen unchanged since last narration.");
-    return;
-  }
+  const frameData = getFrame();
+  if (!frameData) return;
 
-  isRequesting = true;
-  setStatus(`Analyzing screen change (${triggerReason})...`);
+  if (frameData.fingerprint === lastAnalyzedImageHash) {
+    setStatus("Screen unchanged since last narration.");
+    return;
+  }
 
-  try {
-    const description = await describeScreen(frameData.base64);
-    if (description && description.length > 3) {
-      lastAnalyzedImageHash = frameData.fingerprint;
-      lastSpokenDescription = description;
-      const entry = logEntry(description);
-      if (!muteToggle.checked) {
-        speakText(description, entry);
-      }
-    }
-  } catch (err) {
-    setStatus("API Error: " + err.message, true);
-  } finally {
-    isRequesting = false;
-  }
+  isRequesting = true;
+  setStatus(`Describing new content (${triggerReason})...`);
+
+  try {
+    const description = await describeScreen(frameData.base64);
+    if (description && description.length > 5) {
+      lastAnalyzedImageHash = frameData.fingerprint;
+      const entry = logEntry(description);
+      if (!muteToggle.checked) {
+        speakText(description, entry);
+      }
+    }
+  } catch (err) {
+    setStatus("API Error: " + err.message, true);
+  } finally {
+    isRequesting = false;
+  }
 }
 
 function getFrame() {
-  const w = video.videoWidth;
-  const h = video.videoHeight;
-  if (!w || !h) return null;
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  if (!w || !h) return null;
 
-  canvas.width = w;
-  canvas.height = h;
-  ctx.drawImage(video, 0, 0, w, h);
+  canvas.width = w;
+  canvas.height = h;
+  ctx.drawImage(video, 0, 0, w, h);
 
-  const sampleCanvas = document.createElement("canvas");
-  sampleCanvas.width = 16;
-  sampleCanvas.height = 16;
-  sampleCanvas.getContext("2d").drawImage(canvas, 0, 0, 16, 16);
-  const fingerprint = sampleCanvas.toDataURL();
+  const sampleCanvas = document.createElement("canvas");
+  sampleCanvas.width = 16;
+  sampleCanvas.height = 16;
+  sampleCanvas.getContext("2d").drawImage(canvas, 0, 0, 16, 16);
+  const fingerprint = sampleCanvas.toDataURL();
 
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.6); // Slightly lower quality for speed
-  return { 
-    base64: dataUrl.split(",")[1],
-    fingerprint: fingerprint
-  };
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+  return { 
+    base64: dataUrl.split(",")[1],
+    fingerprint: fingerprint
+  };
 }
 
-// Optimized Vision AI call with context-awareness and low latency
+// Rewired specifically for Hugging Face's OpenAI-compatible endpoint
 async function describeScreen(base64Image) {
-  const previousContext = lastSpokenDescription 
-    ? `The previous slide was: "${lastSpokenDescription}". ` 
-    : "";
+  const response = await fetch(
+    API_URL,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${HF_TOKEN}`
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Explain clearly and completely in 2 to 3 full sentences what new content, app view, list, or section is currently shown. Do not leave any sentence unfinished."
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 2048,
+        temperature: 0.2
+      })
+    }
+  );
 
-  const promptText = `${previousContext}In ONE direct, concise sentence (under 15 words), describe what NEW content, drawing, chart, title, or UI element is shown. Speak directly to a visually impaired listener without preamble.`;
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errText}`);
+  }
 
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${HF_TOKEN}`
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: promptText },
-            {
-              type: "image_url",
-              image_url: { url: `data:image/jpeg;base64,${base64Image}` }
-            }
-          ]
-        }
-      ],
-      max_tokens: 75, // Lowered from 2048 to drastically cut API response latency
-      temperature: 0.1
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`HTTP ${response.status}: ${errText}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content.trim();
+  const data = await response.json();
+  return data.choices[0].message.content.trim();
 }
 
-// ---- 4. ENHANCED TEXT-TO-SPEECH ENGINE ----
+// ---- 4. TEXT-TO-SPEECH ENGINE ----
 function speakText(text, entryEl) {
-  if (!("speechSynthesis" in window)) return;
+  if (!("speechSynthesis" in window)) return;
 
-  window.speechSynthesis.cancel();
+  window.speechSynthesis.cancel();
+  if (window.speechSynthesis.paused) {
+    window.speechSynthesis.resume();
+  }
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.05;  // Slightly calmer pace for clarity
-  utterance.pitch = 0.95; // Slightly lower pitch for a whisper-like feel
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.25; 
+  utterance.pitch = 1.0;
 
-  if (availableVoices.length === 0) {
-    availableVoices = window.speechSynthesis.getVoices();
-  }
+  const voices = window.speechSynthesis.getVoices();
+  const englishVoice = voices.find(v => v.lang.startsWith("en-US") || v.lang.startsWith("en-GB") || v.lang.startsWith("en"));
+  if (englishVoice) utterance.voice = englishVoice;
 
-  // Priority heuristic for natural-sounding English voices
-  const preferredVoice = availableVoices.find(v => 
-    v.lang.startsWith("en") && (
-      v.name.includes("Natural") || 
-      v.name.includes("Google") || 
-      v.name.includes("Samantha") || 
-      v.name.includes("Daniel") || 
-      v.name.includes("Karen")
-    )
-  ) || availableVoices.find(v => v.lang.startsWith("en"));
+  utterance.onstart = () => {
+    isNarratingVoice = true;
+    if (entryEl) entryEl.classList.add("speaking");
+    setStatus("Narrating aloud...");
+  };
 
-  if (preferredVoice) utterance.voice = preferredVoice;
+  utterance.onend = () => {
+    isNarratingVoice = false;
+    if (entryEl) entryEl.classList.remove("speaking");
+    setStatus("Finished speaking. Listening for changes...");
+  };
 
-  utterance.onstart = () => {
-    isNarratingVoice = true;
-    if (entryEl) entryEl.classList.add("speaking");
-    setStatus("Whispering description...");
-  };
+  utterance.onerror = (e) => {
+    console.error("SpeechSynthesis error:", e);
+    isNarratingVoice = false;
+    if (entryEl) entryEl.classList.remove("speaking");
+  };
 
-  utterance.onend = () => {
-    isNarratingVoice = false;
-    if (entryEl) entryEl.classList.remove("speaking");
-    setStatus("Listening for screen changes...");
-  };
-
-  utterance.onerror = (e) => {
-    console.error("SpeechSynthesis error:", e);
-    isNarratingVoice = false;
-    if (entryEl) entryEl.classList.remove("speaking");
-  };
-
-  window.speechSynthesis.speak(utterance);
+  setTimeout(() => {
+    window.speechSynthesis.speak(utterance);
+  }, 100);
 }
 
 function stopCapture() {
-  if (silenceTimer) clearTimeout(silenceTimer);
-  if (animFrameId) cancelAnimationFrame(animFrameId);
-  if (visualCheckInterval) clearInterval(visualCheckInterval);
-  if (audioCtx) audioCtx.close();
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  window.speechSynthesis.cancel();
+  if (silenceTimer) clearTimeout(silenceTimer);
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  if (visualCheckInterval) clearInterval(visualCheckInterval);
+  if (audioCtx) audioCtx.close();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  window.speechSynthesis.cancel();
 
-  speechBadge.className = "badge";
-  speechState.textContent = "Idle";
-  previewWrap.classList.add("empty");
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-  setStatus("Stopped.");
+  speechBadge.className = "badge";
+  speechState.textContent = "Idle";
+  previewWrap.classList.add("empty");
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  setStatus("Stopped.");
 }
 
 function setStatus(msg, isError) {
-  statusEl.textContent = msg;
-  statusEl.classList.toggle("error", Boolean(isError));
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("error", Boolean(isError));
 }
 
 function logEntry(text) {
-  const div = document.createElement("div");
-  div.className = "entry";
-  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const div = document.createElement("div");
+  div.className = "entry";
+  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-  div.innerHTML = `
-    <span class="time">${time}</span>
-    <span class="desc">${escapeHtml(text)}</span>
-    <button class="replay" title="Replay aloud" aria-label="Replay">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-    </button>
-  `;
+  div.innerHTML = `
+    <span class="time">${time}</span>
+    <span class="desc">${escapeHtml(text)}</span>
+    <button class="replay" title="Replay aloud" aria-label="Replay">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+    </button>
+  `;
 
-  div.querySelector(".replay").addEventListener("click", () => speakText(text, div));
-  logEl.prepend(div);
-  return div;
+  div.querySelector(".replay").addEventListener("click", () => speakText(text, div));
+  logEl.prepend(div);
+  return div;
 }
 
 function escapeHtml(str) {
-  const d = document.createElement("div");
-  d.textContent = str;
-  return d.innerHTML;
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
 }
