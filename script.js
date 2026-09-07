@@ -1,9 +1,9 @@
 const { ipcRenderer } = require('electron');
 
-const HF_TOKEN = "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"; 
+// Replace your top 3 lines with this:
+const HF_TOKEN = "Your_Token_Here"; // Ensure your real token is here
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
-const MODEL = "Qwen/Qwen3.8-27B"; 
-
+const MODEL = "Qwen/Qwen2.5-VL-72B-Instruct"; // VERIFIED Vision Model
 // DOM Elements
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
