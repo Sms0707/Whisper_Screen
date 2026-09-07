@@ -338,7 +338,7 @@ async function describeScreen(base64Image) {
               {
                 type: "text",
                 text: "Describe ONLY the presentation, shared slides, or main document content. Completely ignore any floating UI windows or overlays. Explain clearly and completely in 2 concise sentences what content or section is shown."
-              },
+              }
               {
                 type: "image_url",
                 image_url: {
