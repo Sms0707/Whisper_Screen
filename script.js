@@ -1,5 +1,5 @@
 const { ipcRenderer } = require('electron');
-const HF_TOKEN = "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"; 
+const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
 const MODEL = "Qwen/Qwen3.8-27B";
 const startBtn = document.getElementById("startBtn");
