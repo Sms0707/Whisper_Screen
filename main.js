@@ -18,12 +18,21 @@ app.whenReady().then(() => {
 
   whisperWindow.loadFile('index.html');
 
-  // Enable the native share picker so you can choose the exact Meet tab/window
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    // Left empty because useSystemPicker handles the interactive dialog box
-  }, { useSystemPicker: true });
+  // Automatically and reliably handle screen sharing requests without crashing
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['window', 'screen'] });
+      
+      // Automatically target the Google Meet or browser window, fallback to primary screen
+      const targetSource = sources.find(s => s.name && (s.name.toLowerCase().includes('meet') || s.name.toLowerCase().includes('chrome'))) || sources[0];
+      
+      callback({ video: targetSource, audio: 'loopback' });
+    } catch (error) {
+      console.error("Display media request error:", error);
+    }
+  });
 
-  // Robust background checker that doesn't break when Whisper Screen is focused
+  // Background gateway detector
   setInterval(async () => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['window'] });
@@ -31,15 +40,13 @@ app.whenReady().then(() => {
 
       if (isMeetOpen) {
         meetDetectedOnce = true;
-        missingMeetCount = 0; // Reset counter while Meet is open
+        missingMeetCount = 0;
         if (whisperWindow && !whisperWindow.isVisible()) {
-          whisperWindow.show(); // Automatically pops up over Google Meet
+          whisperWindow.show();
         }
       } else if (meetDetectedOnce) {
         missingMeetCount++;
-        // Only shut down if Google Meet has been closed for more than 10 seconds
         if (missingMeetCount > 5) {
-          console.log("Google Meet closed. Shutting down Whisper Screen.");
           app.quit();
         }
       }
