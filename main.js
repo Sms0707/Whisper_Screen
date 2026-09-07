@@ -7,18 +7,10 @@ let userDismissedCurrentMeeting = false;
 
 const MEETING_KEYWORDS = ['meet - ', 'zoom meeting', 'teams meeting', 'cisco webex', 'webex meeting'];
 
-// Helper: Safely signals script.js to cancel all active TTS audio & video streams before hiding
-function forceStopAndHideWindow() {
-  if (whisperWindow && !whisperWindow.isDestroyed()) {
-    whisperWindow.webContents.send('force-stop-capture');
-    whisperWindow.hide();
-  }
-}
-
 app.whenReady().then(() => {
   whisperWindow = new BrowserWindow({
     width: 900,
-    height: 400,
+    height: 420,
     alwaysOnTop: true,
     transparent: true,
     frame: false,
@@ -31,24 +23,63 @@ app.whenReady().then(() => {
 
   whisperWindow.loadFile('index.html');
 
-  // 1. GLOBAL SHORTCUT: Ctrl+Shift+W toggles show/hide and kills voice immediately on hide
-  globalShortcut.register('CommandOrControl+Shift+W', () => {
+  // Helper function to handle toggle show/hide & activate/deactivate
+  function toggleWhisperState() {
+    if (!whisperWindow || whisperWindow.isDestroyed()) return;
+
     if (whisperWindow.isVisible()) {
       userDismissedCurrentMeeting = true;
-      forceStopAndHideWindow();
+      whisperWindow.webContents.send('deactivate-whisper');
     } else {
       whisperWindow.show();
       userDismissedCurrentMeeting = false; 
-      whisperWindow.webContents.send('whisper-status', 'activated');
+      whisperWindow.webContents.send('activate-whisper');
+    }
+  }
+
+  // 1. IN-WINDOW KEYBOARD INTERCEPTOR (Direct listener fallback)
+  whisperWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const isCtrlOrCmd = input.control || input.meta;
+
+    // Ctrl + Shift + Q -> Instant Silence
+    if (isCtrlOrCmd && input.shift && input.key.toLowerCase() === 'q') {
+      event.preventDefault();
+      whisperWindow.webContents.send('trigger-silence');
+    }
+
+    // Ctrl + Shift + W -> Toggle Activate / Deactivate
+    if (isCtrlOrCmd && input.shift && input.key.toLowerCase() === 'w') {
+      event.preventDefault();
+      toggleWhisperState();
     }
   });
 
-  // GLOBAL SHORTCUT: Ctrl+Shift+Q instantly silences active TTS speech
-  globalShortcut.register('CommandOrControl+Shift+Q', () => {
-    if (whisperWindow && !whisperWindow.isDestroyed()) {
-      whisperWindow.webContents.send('trigger-silence');
-    }
-  });
+  // 2. GLOBAL SHORTCUTS
+  try {
+    globalShortcut.register('CommandOrControl+Shift+W', toggleWhisperState);
+  } catch (e) {
+    console.warn("Could not register global Ctrl+Shift+W");
+  }
+
+  // Global Silence Shortcut with Alt+Shift+Q Fallback
+  try {
+    globalShortcut.register('CommandOrControl+Shift+Q', () => {
+      if (whisperWindow && !whisperWindow.isDestroyed()) {
+        whisperWindow.webContents.send('trigger-silence');
+      }
+    });
+  } catch (e) {
+    console.warn("Could not register global Ctrl+Shift+Q");
+  }
+
+  try {
+    globalShortcut.register('Alt+Shift+Q', () => {
+      if (whisperWindow && !whisperWindow.isDestroyed()) {
+        whisperWindow.webContents.send('trigger-silence');
+      }
+    });
+  } catch (e) {}
 
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
     try {
@@ -59,13 +90,22 @@ app.whenReady().then(() => {
     }
   });
 
-  // 2. LISTEN FOR UI BUTTON: Kills audio and hides overlay when close button is clicked
+  // UI Dismiss Button Event
   ipcMain.on('close-overlay', () => {
     userDismissedCurrentMeeting = true;
-    forceStopAndHideWindow();
+    if (whisperWindow && !whisperWindow.isDestroyed()) {
+      whisperWindow.webContents.send('deactivate-whisper');
+    }
   });
 
-  // 3. SMART SCANNER: Auto-shows and auto-hides based on active meeting windows
+  // Received from script.js after "Whisper deactivated" voice cue finishes
+  ipcMain.on('hide-window-now', () => {
+    if (whisperWindow && !whisperWindow.isDestroyed()) {
+      whisperWindow.hide();
+    }
+  });
+
+  // 3. SMART SCANNER LOOP
   setInterval(async () => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['window'] });
@@ -81,13 +121,13 @@ app.whenReady().then(() => {
         
         if (whisperWindow && !whisperWindow.isVisible() && !userDismissedCurrentMeeting) {
           whisperWindow.show();
-          whisperWindow.webContents.send('whisper-status', 'activated');
+          whisperWindow.webContents.send('activate-whisper');
         }
       } else if (meetingDetectedOnce) {
         missingMeetingCount++;
         if (missingMeetingCount > 5) {
           if (whisperWindow && whisperWindow.isVisible()) {
-            forceStopAndHideWindow();
+            whisperWindow.webContents.send('deactivate-whisper');
           }
           meetingDetectedOnce = false;
           userDismissedCurrentMeeting = false; 
@@ -99,7 +139,6 @@ app.whenReady().then(() => {
   }, 2000);
 });
 
-// Clean up shortcuts on application exit
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
