@@ -3,9 +3,17 @@ const { app, BrowserWindow, desktopCapturer, session, ipcMain, globalShortcut } 
 let whisperWindow;
 let meetingDetectedOnce = false;
 let missingMeetingCount = 0;
-let userDismissedCurrentMeeting = false; // <-- NEW: Remembers if you hid it!
+let userDismissedCurrentMeeting = false;
 
 const MEETING_KEYWORDS = ['meet - ', 'zoom meeting', 'teams meeting', 'cisco webex', 'webex meeting'];
+
+// Helper: Safely signals script.js to cancel all active TTS audio & video streams before hiding
+function forceStopAndHideWindow() {
+  if (whisperWindow && !whisperWindow.isDestroyed()) {
+    whisperWindow.webContents.send('force-stop-capture');
+    whisperWindow.hide();
+  }
+}
 
 app.whenReady().then(() => {
   whisperWindow = new BrowserWindow({
@@ -23,22 +31,21 @@ app.whenReady().then(() => {
 
   whisperWindow.loadFile('index.html');
 
-  // 1. GLOBAL SHORTCUT: Press Ctrl+Shift+W to manually hide or show the AI anytime!
-  // 1. GLOBAL SHORTCUT: Press Ctrl+Shift+W to manually hide or show the AI
+  // 1. GLOBAL SHORTCUT: Ctrl+Shift+W toggles show/hide and kills voice immediately on hide
   globalShortcut.register('CommandOrControl+Shift+W', () => {
     if (whisperWindow.isVisible()) {
-      whisperWindow.hide();
       userDismissedCurrentMeeting = true;
-      whisperWindow.webContents.send('whisper-status', 'deactivated'); // <--- NEW
+      forceStopAndHideWindow();
     } else {
       whisperWindow.show();
       userDismissedCurrentMeeting = false; 
-      whisperWindow.webContents.send('whisper-status', 'activated'); // <--- NEW
+      whisperWindow.webContents.send('whisper-status', 'activated');
     }
   });
-  // GLOBAL SHORTCUT: Press Ctrl+Shift+Q to instantly silence the AI
+
+  // GLOBAL SHORTCUT: Ctrl+Shift+Q instantly silences active TTS speech
   globalShortcut.register('CommandOrControl+Shift+Q', () => {
-    if (whisperWindow) {
+    if (whisperWindow && !whisperWindow.isDestroyed()) {
       whisperWindow.webContents.send('trigger-silence');
     }
   });
@@ -52,13 +59,13 @@ app.whenReady().then(() => {
     }
   });
 
-  // 2. LISTEN FOR UI BUTTON: Hides the window when 'Dismiss' is clicked
+  // 2. LISTEN FOR UI BUTTON: Kills audio and hides overlay when close button is clicked
   ipcMain.on('close-overlay', () => {
-    whisperWindow.hide();
     userDismissedCurrentMeeting = true;
+    forceStopAndHideWindow();
   });
 
-  // 3. SMART SCANNER: Auto-starts, but respects your privacy if you dismiss it
+  // 3. SMART SCANNER: Auto-shows and auto-hides based on active meeting windows
   setInterval(async () => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['window'] });
@@ -72,7 +79,6 @@ app.whenReady().then(() => {
         meetingDetectedOnce = true;
         missingMeetingCount = 0;
         
-        // Auto-pops up ONLY if you haven't explicitly dismissed it for this meeting
         if (whisperWindow && !whisperWindow.isVisible() && !userDismissedCurrentMeeting) {
           whisperWindow.show();
           whisperWindow.webContents.send('whisper-status', 'activated');
@@ -81,11 +87,8 @@ app.whenReady().then(() => {
         missingMeetingCount++;
         if (missingMeetingCount > 5) {
           if (whisperWindow && whisperWindow.isVisible()) {
-            whisperWindow.hide();
-            whisperWindow.webContents.send('whisper-status', 'deactivated');
+            forceStopAndHideWindow();
           }
-          // The meeting is officially over! 
-          // Reset the flags so the app will auto-open for your NEXT meeting.
           meetingDetectedOnce = false;
           userDismissedCurrentMeeting = false; 
         }
@@ -96,7 +99,7 @@ app.whenReady().then(() => {
   }, 2000);
 });
 
-// Clean up shortcuts when app closes
+// Clean up shortcuts on application exit
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
