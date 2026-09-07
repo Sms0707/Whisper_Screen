@@ -4,11 +4,12 @@ const HF_TOKEN = "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";
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
 const MODEL = "Qwen/Qwen3.8-27B"; 
 
+// DOM Elements
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const testVoiceBtn = document.getElementById("testVoiceBtn");
-const closeBtn = document.getElementById("closeBtn"); // The new explicit 'X' button
-const silenceBtn = document.getElementById("silenceBtn"); // The new instant silence button
+const closeBtn = document.getElementById("closeBtn");
+const silenceBtn = document.getElementById("silenceBtn"); 
 const statusEl = document.getElementById("status");
 const logEl = document.getElementById("log");
 const video = document.getElementById("hiddenVideo");
@@ -25,6 +26,7 @@ const threshSlider = document.getElementById("threshSlider");
 const threshVal = document.getElementById("threshVal");
 const muteToggle = document.getElementById("muteToggle");
 
+// Engine State Variables
 let stream = null;
 let audioCtx = null;
 let analyser = null;
@@ -44,13 +46,31 @@ let previousPixels = null;
 let lastScreenChangedTime = 0;
 let hasPendingScreenChange = false;
 
-testVoiceBtn.addEventListener("click", () => {
-  speakText("Audio voice engine is active and ready.");
-  setStatus("Voice synthesis engine tested successfully.");
-});
+// Pre-load Web Speech voices for Chromium browsers
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => {
+    window.speechSynthesis.getVoices();
+  };
+}
 
-pauseSlider.addEventListener("input", () => { pauseVal.textContent = pauseSlider.value + "s"; });
-threshSlider.addEventListener("input", () => { threshVal.textContent = threshSlider.value; });
+/* =========================================
+   EVENT LISTENERS & CONTROLS
+========================================= */
+
+if (testVoiceBtn) {
+  testVoiceBtn.addEventListener("click", () => {
+    speakText("Audio voice engine is active and ready.");
+    setStatus("Voice synthesis engine tested successfully.");
+  });
+}
+
+if (pauseSlider) {
+  pauseSlider.addEventListener("input", () => { pauseVal.textContent = pauseSlider.value + "s"; });
+}
+
+if (threshSlider) {
+  threshSlider.addEventListener("input", () => { threshVal.textContent = threshSlider.value; });
+}
 
 startBtn.addEventListener("click", async () => {
   window.speechSynthesis.cancel();
@@ -72,35 +92,48 @@ startBtn.addEventListener("click", async () => {
 
   startVisualMotionWatcher();
   stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
-  previewWrap.classList.remove("empty");
+  
+  if (previewWrap) previewWrap.classList.remove("empty");
   startBtn.disabled = true;
   stopBtn.disabled = false;
+
+  // Announce startup aloud immediately upon activation
+  speakText("Whisper activated.");
   setStatus("Monitoring host voice and screen scrolls...");
 });
 
 stopBtn.addEventListener("click", stopCapture);
 
-// Explicit Close Window Logic
-closeBtn.addEventListener("click", () => {
-  if (!stopBtn.disabled) {
-    stopCapture(); // Completely shuts off the camera and audio if running
-  }
-  speakText("Whisper deactivated."); // Audio feedback
-  ipcRenderer.send('close-overlay'); // Tells the background to close the window
-});
+// Explicit Window Close Button
+if (closeBtn) {
+  closeBtn.addEventListener("click", () => {
+    if (!stopBtn.disabled) {
+      stopCapture();
+    }
+    speakText("Whisper deactivated.");
+    setTimeout(() => {
+      ipcRenderer.send('close-overlay');
+    }, 800);
+  });
+}
 
-// Instant Silence Logic
-silenceBtn.addEventListener("click", () => {
-  if (window.speechSynthesis.speaking) {
-    window.speechSynthesis.cancel();
-    isNarratingVoice = false;
-    setStatus("Narration silenced by user.");
-    
-    // Visually remove the "speaking" glow from the transcript log
-    const activeEntries = document.querySelectorAll(".entry.speaking");
-    activeEntries.forEach(entry => entry.classList.remove("speaking"));
-  }
-});
+// Instant Silence Button Guard
+if (silenceBtn) {
+  silenceBtn.addEventListener("click", () => {
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      isNarratingVoice = false;
+      setStatus("Narration silenced by user.");
+      
+      const activeEntries = document.querySelectorAll(".entry.speaking");
+      activeEntries.forEach(entry => entry.classList.remove("speaking"));
+    }
+  });
+}
+
+/* =========================================
+   AUDIO & VISION ENGINE LOGIC
+========================================= */
 
 function setupAudioAnalysis(mediaStream) {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -267,12 +300,11 @@ async function describeScreen(base64Image) {
       messages: [{ 
         role: "user", 
         content: [
-          // The prompt now focuses heavily on filtering out noise and keeping it crisp
           { type: "text", text: "Briefly describe the necessary information currently shown on this screen in a short, crisp way. Skip redundant UI elements, menus, or obvious background details. Provide only the relevant context in 1 to 2 concise sentences." }, 
           { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
         ] 
       }],
-      max_tokens: 80, // Keeps it short, but gives enough room to finish the sentence
+      max_tokens: 80,
       temperature: 0.2
     })
   });
@@ -283,7 +315,7 @@ async function describeScreen(base64Image) {
 }
 
 function speakText(text, entryEl) {
-  if (!("speechSynthesis" in window) || muteToggle.checked) return;
+  if (!("speechSynthesis" in window) || (muteToggle && muteToggle.checked)) return;
 
   window.speechSynthesis.cancel();
 
@@ -292,7 +324,7 @@ function speakText(text, entryEl) {
   utterance.pitch = 1.0;
   
   const voices = window.speechSynthesis.getVoices();
-  const englishVoice = voices.find(v => v.lang.startsWith("en"));
+  const englishVoice = voices.find(v => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Samantha"))) || voices.find(v => v.lang.startsWith("en"));
   if (englishVoice) utterance.voice = englishVoice;
 
   utterance.onstart = () => { 
@@ -314,7 +346,7 @@ function speakText(text, entryEl) {
 
   setTimeout(() => {
     window.speechSynthesis.speak(utterance);
-  }, 150);
+  }, 100);
 }
 
 function stopCapture() {
@@ -324,18 +356,22 @@ function stopCapture() {
   if (audioCtx) audioCtx.close();
   if (stream) stream.getTracks().forEach(t => t.stop());
   window.speechSynthesis.cancel();
-  speechBadge.className = "badge"; speechState.textContent = "Idle";
-  previewWrap.classList.add("empty");
-  startBtn.disabled = false; stopBtn.disabled = true;
+  speechBadge.className = "badge"; 
+  speechState.textContent = "Idle";
+  if (previewWrap) previewWrap.classList.add("empty");
+  startBtn.disabled = false; 
+  stopBtn.disabled = true;
   setStatus("Stopped.");
 }
 
 function setStatus(msg, isError) {
+  if (!statusEl) return;
   statusEl.textContent = msg;
   statusEl.classList.toggle("error", Boolean(isError));
 }
 
 function logEntry(text) {
+  if (!logEl) return null;
   const div = document.createElement("div");
   div.className = "entry";
   const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -349,12 +385,15 @@ function logEntry(text) {
    IPC LISTENERS (Background Communication)
 ========================================= */
 
-// 1. Listen for the Ctrl+Shift+Q global shortcut
 ipcRenderer.on('trigger-silence', () => {
-  if (silenceBtn) silenceBtn.click(); // Simulates a physical click
+  if (silenceBtn) {
+    silenceBtn.click();
+  } else {
+    window.speechSynthesis.cancel();
+    isNarratingVoice = false;
+  }
 });
 
-// 2. Listen for background open/close signals and speak them aloud
 ipcRenderer.on('whisper-status', (event, status) => {
   if (status === 'activated') {
     speakText("Whisper activated.");
