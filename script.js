@@ -248,22 +248,41 @@ async function describeScreen(base64Image) {
   return data.choices[0].message.content.trim();
 }
 
+// Fixed Speech Engine to prevent audio breaking/stuttering
 function speakText(text, entryEl) {
-  if (!("speechSynthesis" in window)) return;
+  if (!("speechSynthesis" in window) || muteToggle.checked) return;
+
   window.speechSynthesis.cancel();
-  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
 
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.25; utterance.pitch = 1.0;
+  utterance.rate = 1.15; // Smooth rate to prevent audio breakdown
+  utterance.pitch = 1.0;
+  
   const voices = window.speechSynthesis.getVoices();
   const englishVoice = voices.find(v => v.lang.startsWith("en"));
   if (englishVoice) utterance.voice = englishVoice;
 
-  utterance.onstart = () => { isNarratingVoice = true; if (entryEl) entryEl.classList.add("speaking"); setStatus("Narrating aloud..."); };
-  utterance.onend = () => { isNarratingVoice = false; if (entryEl) entryEl.classList.remove("speaking"); setStatus("Finished speaking. Listening for changes..."); };
-  utterance.onerror = () => { isNarratingVoice = false; if (entryEl) entryEl.classList.remove("speaking"); };
+  utterance.onstart = () => { 
+    isNarratingVoice = true; 
+    if (entryEl) entryEl.classList.add("speaking"); 
+    setStatus("Narrating aloud..."); 
+  };
+  
+  utterance.onend = () => { 
+    isNarratingVoice = false; 
+    if (entryEl) entryEl.classList.remove("speaking"); 
+    setStatus("Finished speaking. Listening for changes..."); 
+  };
+  
+  utterance.onerror = () => { 
+    isNarratingVoice = false; 
+    if (entryEl) entryEl.classList.remove("speaking"); 
+  };
 
-  setTimeout(() => window.speechSynthesis.speak(utterance), 100);
+  // Micro-delay buffer prevents speech synthesis clipping/breaking
+  setTimeout(() => {
+    window.speechSynthesis.speak(utterance);
+  }, 150);
 }
 
 function stopCapture() {
