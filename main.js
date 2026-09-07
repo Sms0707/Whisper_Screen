@@ -17,9 +17,13 @@ app.whenReady().then(() => {
     show: false,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      sandbox: false // <-- THIS ALLOWS YOUR SCRIPT TO RUN
     }
   });
+
+  // Optional: Uncomment the line below to open Developer Tools automatically so you can see errors
+  // whisperWindow.webContents.openDevTools({ mode: 'detach' });
 
   whisperWindow.loadFile('index.html');
 
