@@ -1,5 +1,8 @@
 const { app, BrowserWindow, desktopCapturer, session, globalShortcut, ipcMain } = require('electron');
 
+// Force Chromium to allow text-to-speech without extra user gestures
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 let whisperWindow;
 let meetingDetectedOnce = false;
 let missingMeetingCount = 0;
@@ -21,13 +24,12 @@ app.whenReady().then(() => {
     }
   });
 
+  // Prevents the overlay window from being captured in screen shares
   whisperWindow.setContentProtection(true);
   whisperWindow.loadFile('index.html');
 
-  // Global Shortcuts
   globalShortcut.register('CommandOrControl+Shift+W', () => {
     if (whisperWindow.isVisible()) {
-      whisperWindow.webContents.send('force-stop-capture');
       whisperWindow.hide();
       userDismissedCurrentMeeting = true;
     } else {
@@ -38,23 +40,14 @@ app.whenReady().then(() => {
 
   globalShortcut.register('CommandOrControl+Shift+Q', () => {
     if (whisperWindow) {
-      whisperWindow.webContents.send('trigger-silence');
+      whisperWindow.webContents.executeJavaScript('window.speechSynthesis.cancel();');
     }
   });
 
   globalShortcut.register('CommandOrControl+Shift+R', () => {
     if (whisperWindow) {
-      whisperWindow.webContents.send('trigger-replay');
+      whisperWindow.webContents.executeJavaScript('const btn = document.querySelector(".entry .replay"); if(btn) btn.click();');
     }
-  });
-
-  // Handle explicit close button click from renderer UI
-  ipcMain.on('close-overlay', () => {
-    if (whisperWindow) {
-      whisperWindow.webContents.send('force-stop-capture');
-      whisperWindow.hide();
-    }
-    userDismissedCurrentMeeting = true;
   });
 
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
@@ -66,11 +59,9 @@ app.whenReady().then(() => {
     }
   });
 
-  // Background Meeting Scanner Loop
   setInterval(async () => {
     try {
       const sources = await desktopCapturer.getSources({ types: ['window'] });
-      
       const isMeetingOpen = sources.some(s => {
         if (!s.name) return false;
         return MEETING_KEYWORDS.some(keyword => s.name.toLowerCase().includes(keyword));
@@ -79,28 +70,20 @@ app.whenReady().then(() => {
       if (isMeetingOpen) {
         meetingDetectedOnce = true;
         missingMeetingCount = 0;
-        
         if (whisperWindow && !whisperWindow.isVisible() && !userDismissedCurrentMeeting) {
           whisperWindow.show();
         }
       } else if (meetingDetectedOnce) {
         missingMeetingCount++;
-        
-        // Meeting closed: forcibly kill speech audio and stop screen recording loops
         if (missingMeetingCount > 5) {
-          if (whisperWindow) {
-            whisperWindow.webContents.send('force-stop-capture');
-            if (whisperWindow.isVisible()) {
-              whisperWindow.hide();
-            }
+          if (whisperWindow && whisperWindow.isVisible()) {
+            whisperWindow.hide();
           }
           meetingDetectedOnce = false;
           userDismissedCurrentMeeting = false; 
         }
       }
-    } catch (err) {
-      // Ignore background scan errors
-    }
+    } catch (err) {}
   }, 2000);
 });
 
