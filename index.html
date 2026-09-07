@@ -10,67 +10,49 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-  <!-- Ambient background glows -->
-  <div class="ambient-glow glow-1"></div>
-  <div class="ambient-glow glow-2"></div>
-
-<main class="glass-panel">
-  <header>
-    <div class="brand-badge">Live AI Vision</div>
-    <h1>Whisper Screen</h1>
-    <p>Seamless, zero-latency accessibility narration. Pre-loading visual context while you speak.</p>
-  </header>
-
-  <div class="preview empty" id="previewWrap">
-    <video id="hiddenVideo" autoplay muted playsinline></video>
-    <div class="badges">
-      <div class="badge" id="speechBadge"><span class="dot"></span><span id="speechState">Awaiting Audio</span></div>
-    </div>
-  </div>
-  
-  <canvas id="hiddenCanvas" style="display:none;"></canvas>
-  <canvas id="motionCanvas" width="64" height="64" style="display:none;"></canvas>
-
-  <div class="controls">
-    <button class="btn-primary" id="startBtn">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14v-4z"></path><rect x="3" y="6" width="12" height="12" rx="2" ry="2"></rect></svg>
-      Share Screen
-    </button>
-    <button class="btn-ghost" id="testVoiceBtn">Test Voice</button>
-    <button class="btn-ghost" id="stopBtn" disabled>Stop</button>
-
-    <div class="settings-group">
-      <div class="field">
-        <label for="threshSlider">Noise Gate</label>
-        <input type="range" id="threshSlider" min="10" max="60" step="2" value="24">
-        <span class="val" id="threshVal">24</span>
+  <main class="overlay-panel">
+    <!-- Top Toolbar (Draggable) -->
+    <div class="top-toolbar">
+      <button class="btn-primary" id="startBtn">Start AI</button>
+      <button class="btn-ghost" id="stopBtn" disabled>Stop</button>
+      
+      <div class="settings-group">
+        <div class="field">
+          <label>Noise Gate</label>
+          <input type="range" id="threshSlider" min="10" max="60" step="2" value="24">
+        </div>
+        <div class="field">
+          <label>Trigger Pause</label>
+          <input type="range" id="pauseSlider" min="0.5" max="4.0" step="0.5" value="1.0">
+        </div>
       </div>
-
-      <div class="field">
-        <label for="pauseSlider">Trigger Pause</label>
-        <input type="range" id="pauseSlider" min="0.5" max="4.0" step="0.5" value="1.0">
-        <span class="val" id="pauseVal">1.0s</span>
+      
+      <label class="toggle-field" style="cursor: pointer;">
+        <input type="checkbox" id="muteToggle"> Mute Voice
+      </label>
+      
+      <div class="badges">
+      <!-- The classic 'X' Close Button (Pinned to Top Right) -->
+      <button class="btn-ghost" id="closeBtn" title="Close Whisper Screen" style="position: absolute; right: 20px; top: 20px; padding: 6px; border-color: transparent; color: #94A3B8; -webkit-app-region: no-drag; z-index: 100;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+        <div class="badge" id="speechBadge"><span class="dot"></span><span id="speechState">Idle</span></div>
       </div>
     </div>
 
-    <label class="toggle-field" style="cursor: pointer;">
-      <input type="checkbox" id="muteToggle">
-      <span class="toggle-label">Mute AI Voice</span>
-    </label>
-  </div>
-
-  <div class="status" id="status">Ready. Click "Share Screen" to begin the session.</div>
-
-  <section class="transcript">
-    <div class="transcript-header">
-      <h2>Live Transcript</h2>
-      <span class="live-indicator"></span>
-    </div>
+    <!-- Status & Transcriptions -->
+    <div class="status" id="status">Waiting for Google Meet...</div>
     <div id="log" class="log-container"></div>
-  </section>
-</main>
-
-<script src="script.js"></script>
+    
+    <!-- Hidden Elements required for the engine to run -->
+    <div style="display: none;">
+      <button id="testVoiceBtn">Hidden Test</button>
+      <span id="threshVal"></span><span id="pauseVal"></span>
+      <div id="previewWrap"><video id="hiddenVideo" autoplay muted playsinline></video></div>
+      <canvas id="hiddenCanvas"></canvas>
+      <canvas id="motionCanvas" width="64" height="64"></canvas>
+    </div>
+  </main>
+  <script src="script.js"></script>
 </body>
 </html>
