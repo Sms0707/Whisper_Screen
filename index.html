@@ -10,12 +10,10 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Ambient background glow effects -->
   <div class="ambient-glow glow-1"></div>
   <div class="ambient-glow glow-2"></div>
 
   <main class="overlay-panel">
-    <!-- Top Drag Handle & Window Controls -->
     <header class="window-header">
       <div class="brand">
         <div class="brand-icon">
@@ -32,13 +30,12 @@
           <span class="dot"></span>
           <span id="speechState">Idle</span>
         </div>
-        <button class="btn-icon" id="closeBtn" title="Close Overlay (Ctrl+Shift+W)">
+        <button class="btn-icon" id="closeBtn" title="Close Overlay">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- Control Bar -->
     <section class="control-bar">
       <div class="primary-actions">
         <button class="btn-primary" id="startBtn">
@@ -49,7 +46,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
           <span>Stop</span>
         </button>
-        <button class="btn-ghost" id="silenceBtn" title="Silence AI (Ctrl+Shift+Q)">
+        <button class="btn-ghost" id="silenceBtn" title="Silence AI">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
           <span>Silence</span>
         </button>
@@ -84,13 +81,11 @@
       </label>
     </section>
 
-    <!-- Status Banner -->
     <div class="status-banner">
       <div class="pulse-ring"></div>
       <div class="status" id="status">Waiting for screen source...</div>
     </div>
 
-    <!-- Live Whisper Log -->
     <section class="transcript-section">
       <div class="section-title">
         <span>Live Context Feed</span>
@@ -101,7 +96,6 @@
       <div id="log" class="log-container"></div>
     </section>
 
-    <!-- Hidden Pipeline Elements Required by Script -->
     <div style="display: none;">
       <button id="testVoiceBtn">Hidden Test</button>
       <div id="previewWrap"><video id="hiddenVideo" autoplay muted playsinline></video></div>
