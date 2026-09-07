@@ -1,7 +1,13 @@
 const { ipcRenderer } = require('electron');
-const HF_TOKEN = "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"; 
-const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
-const MODEL = "Qwen/Qwen3.8-27B";
+
+// Replace with your actual NVIDIA API key starting with "nvapi-..."
+const NVIDIA_API_KEY = "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"; 
+
+// NVIDIA NIM OpenAI-compatible endpoint
+const API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"; 
+
+// NVIDIA hosted multimodal vision model
+const MODEL = "meta/llama-3.2-11b-vision-instruct";
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const testVoiceBtn = document.getElementById("testVoiceBtn");
