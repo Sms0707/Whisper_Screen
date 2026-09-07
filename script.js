@@ -1,7 +1,7 @@
 const { ipcRenderer } = require('electron');
 const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
-const MODEL = "Qwen/Qwen2-VL-7B-Instruct";
+const MODEL = "Qwen/Qwen2.5-VL-7B-Instruct";
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const testVoiceBtn = document.getElementById("testVoiceBtn");
