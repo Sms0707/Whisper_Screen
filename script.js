@@ -1,3 +1,5 @@
+const { ipcRenderer } = require('electron'); // Bridge to communicate with main.js
+
 const HF_TOKEN = "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"; 
 const API_URL = "https://router.huggingface.co/v1/chat/completions"; 
 const MODEL = "Qwen/Qwen3.8-27B"; 
@@ -5,6 +7,8 @@ const MODEL = "Qwen/Qwen3.8-27B";
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const testVoiceBtn = document.getElementById("testVoiceBtn");
+const closeBtn = document.getElementById("closeBtn"); // The new explicit 'X' button
+const silenceBtn = document.getElementById("silenceBtn"); // The new instant silence button
 const statusEl = document.getElementById("status");
 const logEl = document.getElementById("log");
 const video = document.getElementById("hiddenVideo");
@@ -75,6 +79,28 @@ startBtn.addEventListener("click", async () => {
 });
 
 stopBtn.addEventListener("click", stopCapture);
+
+// Explicit Close Window Logic
+closeBtn.addEventListener("click", () => {
+  if (!stopBtn.disabled) {
+    stopCapture(); // Completely shuts off the camera and audio if running
+  }
+  speakText("Whisper deactivated."); // Audio feedback
+  ipcRenderer.send('close-overlay'); // Tells the background to close the window
+});
+
+// Instant Silence Logic
+silenceBtn.addEventListener("click", () => {
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    isNarratingVoice = false;
+    setStatus("Narration silenced by user.");
+    
+    // Visually remove the "speaking" glow from the transcript log
+    const activeEntries = document.querySelectorAll(".entry.speaking");
+    activeEntries.forEach(entry => entry.classList.remove("speaking"));
+  }
+});
 
 function setupAudioAnalysis(mediaStream) {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -238,24 +264,31 @@ async function describeScreen(base64Image) {
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${HF_TOKEN}` },
     body: JSON.stringify({
       model: MODEL,
-      messages: [{ role: "user", content: [{ type: "text", text: "Explain clearly and completely in 2 to 3 full sentences what new content, app view, list, or section is currently shown. Do not leave any sentence unfinished." }, { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }] }],
-      max_tokens: 2048,
+      messages: [{ 
+        role: "user", 
+        content: [
+          // The prompt now focuses heavily on filtering out noise and keeping it crisp
+          { type: "text", text: "Briefly describe the necessary information currently shown on this screen in a short, crisp way. Skip redundant UI elements, menus, or obvious background details. Provide only the relevant context in 1 to 2 concise sentences." }, 
+          { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+        ] 
+      }],
+      max_tokens: 80, // Keeps it short, but gives enough room to finish the sentence
       temperature: 0.2
     })
   });
+  
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
   const data = await response.json();
   return data.choices[0].message.content.trim();
 }
 
-// Fixed Speech Engine to prevent audio breaking/stuttering
 function speakText(text, entryEl) {
   if (!("speechSynthesis" in window) || muteToggle.checked) return;
 
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.15; // Smooth rate to prevent audio breakdown
+  utterance.rate = 1.15; 
   utterance.pitch = 1.0;
   
   const voices = window.speechSynthesis.getVoices();
@@ -279,7 +312,6 @@ function speakText(text, entryEl) {
     if (entryEl) entryEl.classList.remove("speaking"); 
   };
 
-  // Micro-delay buffer prevents speech synthesis clipping/breaking
   setTimeout(() => {
     window.speechSynthesis.speak(utterance);
   }, 150);
@@ -312,3 +344,21 @@ function logEntry(text) {
   logEl.prepend(div);
   return div;
 }
+
+/* =========================================
+   IPC LISTENERS (Background Communication)
+========================================= */
+
+// 1. Listen for the Ctrl+Shift+Q global shortcut
+ipcRenderer.on('trigger-silence', () => {
+  if (silenceBtn) silenceBtn.click(); // Simulates a physical click
+});
+
+// 2. Listen for background open/close signals and speak them aloud
+ipcRenderer.on('whisper-status', (event, status) => {
+  if (status === 'activated') {
+    speakText("Whisper activated.");
+  } else if (status === 'deactivated') {
+    speakText("Whisper deactivated.");
+  }
+});
