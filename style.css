@@ -121,10 +121,9 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 20px; /* Increased from 10px to cleanly separate the badge and X */
   -webkit-app-region: no-drag;
 }
-
 /* Badges & Status Indicators */
 .badge {
   display: inline-flex;
